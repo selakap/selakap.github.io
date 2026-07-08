@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PaaS Self-Service Deployment Console — Selaka Piumal</title>
+  <meta name="description" content="Case study: a self-service internal developer platform that turns a reviewed git commit into a running AWS Lambda service.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">PaaS Self-Service Deployment Console</h1>
+        <p class="project-hero__subtitle">
+          A self-service internal developer platform that takes a reviewed git commit
+          and turns it into a running AWS Lambda service &mdash; complete with automated
+          code-quality gating, human approval, containerised builds, and one-click
+          deployment &mdash; without anyone touching the AWS console by hand.
+        </p>
+        <ul class="tag-list">
+          <li>React</li><li>Vite</li><li>FastAPI</li><li>Python</li>
+          <li>Docker</li><li>Amazon ECR</li><li>AWS Lambda</li>
+          <li>AWS CDK</li><li>EventBridge</li><li>API Gateway</li><li>SonarCloud</li>
+        </ul>
+        <div class="hero__cta">
+          <a href="https://github.com/selakap/paas-frontend" target="_blank" rel="noopener" class="btn btn--primary">Frontend Repo</a>
+          <a href="https://github.com/selakap/paas-backend" target="_blank" rel="noopener" class="btn btn--ghost">Backend Repo</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Turning a reviewed commit into a running cloud service usually means manually
+          building a Docker image, pushing it to a container registry, and hand-writing
+          infrastructure-as-code for a Lambda function, its trigger (a schedule or an HTTP
+          endpoint), and its permissions &mdash; slow, repetitive, and easy to get wrong. There's
+          also no consistent gate to stop unreviewed or low-quality code from reaching
+          production.
+        </p>
+        <p class="project-copy">
+          This proof-of-concept collapses that entire path into a single console: submit a
+          commit, get it approved against an automated quality scan, build it, and deploy it
+          &mdash; as either a scheduled job or a public API &mdash; in a few clicks.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Request Approval</h4>
+              <p>A developer submits a specific commit from a repository for review. This automatically triggers an automated SonarCloud code-quality scan.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Review</h4>
+              <p>An admin opens the Review Queue, checks the quality scan result and request notes, then approves or rejects that exact commit.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Build</h4>
+              <p>Once approved, the developer packages that commit into a container image via Docker and pushes it to Amazon ECR.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Deploy</h4>
+              <p>The built image becomes a live AWS Lambda function &mdash; either on a repeating schedule via EventBridge (Cron), or reachable as an HTTP endpoint via API Gateway &mdash; provisioned automatically with AWS CDK.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span></div>
+            <div class="process__content">
+              <h4>Done</h4>
+              <p>The result of every step &mdash; success or error &mdash; is shown directly on the page, no CLI or AWS console required.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box">React Console<br><small>Vite + React Router</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">FastAPI Backend</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">SonarCloud<br><small>Automated quality gate</small></div>
+            <div class="arch-box arch-box--small">Docker Build<br><small>Push to Amazon ECR</small></div>
+            <div class="arch-box arch-box--small">AWS CDK<br><small>Lambda + EventBridge / API Gateway</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          The frontend is a plain React + Vite single-page app with no state-management
+          library, talking to a local FastAPI backend over REST. The backend owns three
+          flows: cloning &amp; building a repo into a Lambda-compatible container image,
+          deploying that image behind a scheduled EventBridge trigger, and deploying it
+          behind an API Gateway HTTP endpoint &mdash; both provisioned through AWS CDK.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Walkthrough</h2>
+
+        <div class="mockup">
+          <div class="mockup__bar"><span class="mockup__dot"></span><span class="mockup__dot"></span><span class="mockup__dot"></span></div>
+          <div class="mockup__body">
+            <div class="mockup__tabs">
+              <span class="mockup__tab mockup__tab--active">Request Approval</span>
+              <span class="mockup__tab">Build &amp; Push</span>
+              <span class="mockup__tab">Deploy Resources</span>
+            </div>
+            <div class="mockup__field">
+              <label>Repo URL</label>
+              <div class="mockup__input">https://github.com/selakap/sample-python-lambda.git</div>
+            </div>
+            <div class="mockup__field">
+              <label>Branch</label>
+              <div class="mockup__input">develop</div>
+            </div>
+            <div class="mockup__field">
+              <label>Commit</label>
+              <div class="mockup__input">79dedf7 &mdash; some changes to the app</div>
+            </div>
+            <span class="mockup__button">Submit for Approval</span>
+          </div>
+        </div>
+
+        <div class="mockup">
+          <div class="mockup__bar"><span class="mockup__dot"></span><span class="mockup__dot"></span><span class="mockup__dot"></span></div>
+          <div class="mockup__body">
+            <div class="mockup__tabs">
+              <span class="mockup__tab">Request Approval</span>
+              <span class="mockup__tab mockup__tab--active">Build &amp; Push</span>
+              <span class="mockup__tab">Deploy Resources</span>
+            </div>
+            <div class="mockup__field">
+              <label>Commit</label>
+              <div class="mockup__input">79dedf7 &mdash; some changes to the app</div>
+            </div>
+            <span class="mockup__badge mockup__badge--success">Approved</span>
+            <div class="mockup__field" style="margin-top:14px;">
+              <label>Image name</label>
+              <div class="mockup__input">sample-fn-image</div>
+            </div>
+            <span class="mockup__button">Build &amp; Push</span>
+            <div class="mockup__result">
+              {<br>
+              &nbsp;&nbsp;"status": "success",<br>
+              &nbsp;&nbsp;"image_uri": "&lt;account-id&gt;.dkr.ecr.ap-southeast-2.amazonaws.com/sample-fn-image:a1b2c3d",<br>
+              &nbsp;&nbsp;"repository_arn": "arn:aws:ecr:ap-southeast-2:&lt;account-id&gt;:repository/sample-fn-image"<br>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="mockup">
+          <div class="mockup__bar"><span class="mockup__dot"></span><span class="mockup__dot"></span><span class="mockup__dot"></span></div>
+          <div class="mockup__body">
+            <div class="mockup__tabs">
+              <span class="mockup__tab">Request Approval</span>
+              <span class="mockup__tab">Build &amp; Push</span>
+              <span class="mockup__tab mockup__tab--active">Deploy Resources</span>
+            </div>
+            <div class="mockup__tabs" style="margin-bottom:20px;">
+              <span class="mockup__tab">Cron Job</span>
+              <span class="mockup__tab mockup__tab--active">API Gateway</span>
+            </div>
+            <div class="mockup__field">
+              <label>Function name</label>
+              <div class="mockup__input">sample-api-fn</div>
+            </div>
+            <div class="mockup__field">
+              <label>Image URI</label>
+              <div class="mockup__input">&lt;account-id&gt;.dkr.ecr.ap-southeast-2.amazonaws.com/sample-fn-image:a1b2c3d</div>
+            </div>
+            <div class="mockup__field">
+              <label>Memory (MB) / Timeout (sec)</label>
+              <div class="mockup__input">512 / 30</div>
+            </div>
+            <span class="mockup__button">Deploy</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <p class="project-copy">
+          As a proof-of-concept rather than a finished product, a few things are
+          intentionally out of scope for now:
+        </p>
+        <ul class="timeline__bullets project-copy">
+          <li>No login or user-account system &mdash; anyone with the URL can use it.</li>
+          <li>No persistence &mdash; refreshing the browser clears any in-progress form.</li>
+          <li>The Review Queue doesn't auto-refresh; a manual refresh shows the latest status.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
