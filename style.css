@@ -390,6 +390,17 @@ img {
   margin-bottom: 16px;
 }
 
+.project-copy code,
+.process__content code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--text);
+}
+
 /* ---------- Process Flow ---------- */
 .process {
   max-width: 720px;
@@ -589,6 +600,91 @@ img {
   color: #86efac;
   line-height: 1.7;
   overflow-x: auto;
+}
+
+/* ---------- Portal Mockup (Authority NAR case study) ---------- */
+.portal-mock {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+
+.portal-mock__header {
+  background: linear-gradient(135deg, #4d2c95, #842b94);
+  padding: 22px 28px;
+  color: #fff;
+}
+
+.portal-mock__header h4 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.portal-mock__breadcrumb {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 6px;
+}
+
+.portal-mock__body {
+  padding: 26px 28px;
+}
+
+.portal-mock__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.portal-pill {
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+}
+
+.portal-pill strong {
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.portal-table-wrap {
+  overflow-x: auto;
+}
+
+.portal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.portal-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.portal-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text);
+}
+
+.portal-table tr:last-child td {
+  border-bottom: none;
+}
+
+.portal-table a {
+  color: var(--accent-2);
+  font-weight: 600;
 }
 
 /* ---------- Experience Timeline ---------- */

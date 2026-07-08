@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authority NAR Contact Resolution API — Selaka Piumal</title>
+  <meta name="description" content="Case study: a Spring Boot integration service that resolves phone numbers into Civica Authority contact records and aggregates a resident's CRM, rates, and property history into one 360° view.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Authority NAR Contact Resolution API</h1>
+        <p class="project-hero__subtitle">
+          A Spring Boot integration service that resolves a caller's phone number into
+          Civica Authority contact records in real time, and aggregates a resident's CRM
+          history, rates, and property/GIS records into a single 360&deg; view &mdash; a
+          proof-of-concept built for council contact-centre and customer-service teams.
+        </p>
+        <ul class="tag-list">
+          <li>Java 17</li><li>Spring Boot</li><li>Spring MVC</li><li>Spring Security</li>
+          <li>Thymeleaf</li><li>OAuth2</li><li>Civica Authority</li><li>Docker</li>
+          <li>AWS ECS Fargate</li><li>AWS CloudFormation</li><li>ALB</li><li>Bitbucket Pipelines</li>
+        </ul>
+        <div class="hero__cta">
+          <a href="https://github.com/selakap/Authority-NarApi" target="_blank" rel="noopener" class="btn btn--primary">View Repository</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          When a resident calls a council contact centre, the only thing an operator
+          usually has is a phone number. Turning that into a resident's identity and
+          full history inside Civica Authority means manually searching the Name
+          Register, then separately opening CRM enquiry history, rates and property
+          records, and GIS documents &mdash; across several screens and logins. There's no
+          single phone-first entry point into Authority's data, and no consistent audit
+          trail proving a lookup happened and what it returned.
+        </p>
+        <p class="project-copy">
+          This proof-of-concept closes that gap with two purpose-built endpoints on top
+          of Civica Authority's OData/REST APIs: a machine-readable phone-to-contact
+          resolver for telephony/CTI systems, and a human-readable 360&deg; dashboard that
+          assembles a resident's CRM, rates, and property/GIS records onto one screen.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Phone Lookup</h4>
+              <p>An external system (e.g. a CTI/telephony platform) calls <code>GET /api/contact/search?phone={number}</code>. The service authenticates against Civica Authority via an OAuth2 password grant, then queries the Name Register for any contact whose mobile phone matches.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Match Resolution</h4>
+              <p>Matching Name Register (NAR) records are normalised into first name, last name, full name, address, and NAR ID, and returned as JSON so the calling system can present or auto-select the right contact.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>360&deg; View Request</h4>
+              <p>Once a NAR ID is known, <code>GET /contact/360view?nar={narId}</code> fans out to three data pulls: paginated CRM enquiry history, rate-payer &amp; parcel records, and Civica GIS document URLs for each parcel and assessment.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Dashboard Render</h4>
+              <p>Results are pushed into a server-rendered Thymeleaf dashboard showing the resident's name, address, and NAR ID up top, with tabbed CRM and Rates tables below &mdash; each row deep-linking straight back into Authority's own CRM enquiry and GIS screens.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span></div>
+            <div class="process__content">
+              <h4>Audit Trail</h4>
+              <p>Whether a lookup succeeds or fails, an async event service posts a signed integration-completed event &mdash; tenant, integration ID, status, response code &mdash; to a central audit endpoint, so every phone lookup and every 360&deg; view is independently traceable.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Application Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box">NarController<br><small>/ ContactViewController</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">NarService</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">AuthorityHelper<br><small>domain mapping</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">AuthorityManager<br><small>OAuth2 + REST/OData</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">Civica Authority</div>
+        </div>
+        <p class="project-copy">
+          Requests flow through four clean layers: controllers accept and validate the
+          HTTP request, <code>NarService</code> orchestrates the use case, <code>AuthorityHelper</code>
+          maps Authority's OData responses into the API's own domain model, and
+          <code>AuthorityManager</code> owns every outbound call &mdash; token generation and all
+          REST/OData requests &mdash; through a shared <code>HttpHelper</code> that centralises
+          logging, timeouts, and error handling. Every request carries a short tracking
+          ID that's threaded through every log line for end-to-end traceability.
+        </p>
+        <p class="project-copy">
+          Spring Security guards every route with HTTP Basic authentication except
+          <code>/healthz</code>, which is left open for the load balancer's health checks.
+        </p>
+
+        <h3 style="margin: 40px 0 20px; font-size:1.2rem;">360&deg; View Data Fan-Out</h3>
+        <div class="arch-diagram">
+          <div class="arch-box">AuthorityHelper</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">CRM Enquiry History<br><small>paginated OData, 100 rows/page</small></div>
+            <div class="arch-box arch-box--small">Rate Payers &amp; Parcels<br><small>rates &rarr; parcel search</small></div>
+            <div class="arch-box arch-box--small">GIS Document URLs<br><small>parcel map + assessment map</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          The 360&deg; view is the most involved flow: CRM history is paged through in
+          batches of 100 until Authority stops returning full pages, each rate-payer
+          record is resolved down to its parcel, and each parcel triggers two more
+          calls &mdash; a GIS integration request followed by a signed URL lookup &mdash; to
+          produce direct links to the parcel map and the assessment map. All of it is
+          assembled and rendered before the dashboard is returned.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> AWS Deployment Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box">Bitbucket Pipelines<br><small>Docker build</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">Amazon ECR<br><small>versioned image tag</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">CloudFormation Deploy</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">ECS Fargate Task<br><small>private subnet, no public IP</small></div>
+            <div class="arch-box arch-box--small">Shared ALB<br><small>routes /contact/* and /api/contact/*</small></div>
+            <div class="arch-box arch-box--small">CloudWatch Logs<br><small>90-day retention</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          A custom <code>deployNarApi-UAT</code> Bitbucket pipeline builds the Spring Boot
+          app with a multi-stage Maven &rarr; Alpine-JRE Dockerfile, tags the image with a
+          build timestamp, pushes it to Amazon ECR, and runs
+          <code>aws cloudformation deploy</code> against a template that provisions (or
+          updates) an ECS Fargate service &mdash; 256 CPU units, 512&nbsp;MB memory, one task,
+          no public IP &mdash; sitting behind an existing shared Application Load Balancer.
+          A listener rule routes <code>/contact/*</code> and <code>/api/contact/*</code> to the
+          service's target group, with health checks every 30 seconds (2 healthy / 3
+          unhealthy thresholds) and a CloudWatch log group retaining logs for 90 days.
+        </p>
+        <p class="project-copy">
+          Authority credentials, OAuth2 client details, and the audit endpoint URL are
+          injected purely as CloudFormation parameters at deploy time &mdash; nothing is
+          hardcoded in the image or the repo.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Walkthrough</h2>
+
+        <div class="mockup">
+          <div class="mockup__bar"><span class="mockup__dot"></span><span class="mockup__dot"></span><span class="mockup__dot"></span></div>
+          <div class="mockup__body">
+            <div class="mockup__tabs">
+              <span class="mockup__tab mockup__tab--active">Phone Search</span>
+              <span class="mockup__tab">360&deg; View</span>
+            </div>
+            <div class="mockup__field">
+              <label>GET /api/contact/search</label>
+              <div class="mockup__input">phone = 0412345678</div>
+            </div>
+            <span class="mockup__button">Search</span>
+            <div class="mockup__result">
+              {<br>
+              &nbsp;&nbsp;"success": true,<br>
+              &nbsp;&nbsp;"parameters": [<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;{<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"firstName": "Jane",<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"lastName": "Citizen",<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"fullName": "Jane Citizen",<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"narId": "482913",<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"address": "12 Example Street, Sample VIC 3000"<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+              &nbsp;&nbsp;]<br>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="portal-mock">
+          <div class="portal-mock__header">
+            <h4>Customer Service Portal</h4>
+            <p class="portal-mock__breadcrumb">Home &rsaquo; 360&deg; View</p>
+          </div>
+          <div class="portal-mock__body">
+            <div class="portal-mock__pills">
+              <span class="portal-pill"><strong>NAR ID</strong>482913</span>
+              <span class="portal-pill"><strong>Name</strong>Jane Citizen</span>
+              <span class="portal-pill"><strong>Address</strong>12 Example Street, Sample VIC 3000</span>
+            </div>
+            <div class="mockup__tabs">
+              <span class="mockup__tab mockup__tab--active">CRM</span>
+              <span class="mockup__tab">Rates</span>
+            </div>
+            <div class="portal-table-wrap">
+              <table class="portal-table">
+                <thead>
+                  <tr><th>Received Date</th><th>CRM ID</th><th>Category</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>02 Jul 2026, 9:14 AM</td><td>2026/00481</td><td>Rates Enquiry</td><td><a href="#">View in Authority &rarr;</a></td></tr>
+                  <tr><td>18 May 2026, 2:47 PM</td><td>2026/00312</td><td>Animal Registration</td><td><a href="#">View in Authority &rarr;</a></td></tr>
+                  <tr><td>03 Feb 2026, 11:02 AM</td><td>2026/00109</td><td>Waste &amp; Recycling</td><td><a href="#">View in Authority &rarr;</a></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          Sample data shown above is illustrative &mdash; the real dashboard renders live
+          Authority records and requires an authenticated session.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <p class="project-copy">
+          As a proof-of-concept rather than a finished product, a few things are
+          intentionally out of scope for now:
+        </p>
+        <ul class="timeline__bullets project-copy">
+          <li>Authentication is a single shared HTTP Basic credential &mdash; there's no per-operator identity or role-based access yet.</li>
+          <li>Built for a single Civica Authority tenant; multi-tenant routing isn't implemented.</li>
+          <li>No caching layer &mdash; every phone search and 360&deg; view re-queries Authority live, including the OAuth2 token exchange.</li>
+          <li>Verified manually against a UAT Authority instance; no automated integration test suite yet.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
