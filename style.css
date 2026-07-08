@@ -82,7 +82,7 @@ img {
 
 .navbar__nav {
   display: flex;
-  gap: 32px;
+  gap: 24px;
 }
 
 .navbar__nav a {
@@ -346,6 +346,108 @@ img {
   color: var(--text-muted);
 }
 
+/* ---------- Experience Timeline ---------- */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.timeline__item {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--accent-1);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+}
+
+.timeline__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline__header h3 {
+  font-size: 1.15rem;
+}
+
+.timeline__date {
+  color: var(--accent-2);
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.timeline__company {
+  color: var(--text-muted);
+  font-weight: 600;
+  margin: 4px 0 14px;
+}
+
+.timeline__desc {
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.timeline__bullets li {
+  position: relative;
+  color: var(--text-muted);
+  padding-left: 20px;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.timeline__bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gradient);
+}
+
+/* ---------- Education ---------- */
+.edu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+.edu-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 28px;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.edu-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-2);
+}
+
+.edu-card__year {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-3);
+  margin-bottom: 10px;
+}
+
+.edu-card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.edu-card p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 /* ---------- Projects ---------- */
 .projects__grid {
   display: grid;
@@ -410,6 +512,51 @@ img {
   flex-grow: 1;
 }
 
+.projects__more {
+  text-align: center;
+  margin-top: 32px;
+}
+
+.clients__heading {
+  margin-top: 64px;
+  margin-bottom: 24px;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.clients-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px;
+}
+
+.clients-group {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+}
+
+.clients-group h4 {
+  font-size: 1rem;
+  margin-bottom: 14px;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+.clients-group .tag-list {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clients-group .tag-list li {
+  border-radius: 8px;
+  width: 100%;
+}
+
 /* ---------- Contact ---------- */
 .section--contact {
   background: var(--bg-alt);
@@ -426,6 +573,11 @@ img {
   color: var(--text-muted);
   max-width: 480px;
   margin-bottom: 36px;
+}
+
+.contact__socials {
+  justify-content: center;
+  margin-top: 36px;
 }
 
 /* ---------- Footer ---------- */
