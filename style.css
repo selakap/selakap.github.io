@@ -706,6 +706,35 @@ img {
   font-weight: 600;
 }
 
+/* ---------- Code Block ---------- */
+.code-block {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+}
+
+.code-block pre {
+  margin: 0;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre;
+}
+
+.code-block__label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: 10px;
+}
+
 /* ---------- Video Embed ---------- */
 .video-embed {
   position: relative;
