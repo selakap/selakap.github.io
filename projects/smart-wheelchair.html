@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Wheelchair — Multi-Modal Control Interface — Selaka Piumal</title>
+  <meta name="description" content="Case study: a final-year research project at the University of Moratuwa — a conventional wheelchair retrofitted with voice, gesture, and joystick control interfaces, published at IEEE MERCon 2018.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Smart Wheelchair &mdash; Multi-Modal Control Interface</h1>
+        <p class="project-hero__subtitle">
+          A final-year research project at the University of Moratuwa: a conventional
+          wheelchair retrofitted with three ways to drive it &mdash; voice, hand gesture, and
+          the standard joystick &mdash; so the interface adapts to the range of motor ability
+          a user actually has, instead of assuming everyone can operate a joystick.
+        </p>
+        <ul class="tag-list">
+          <li>Arduino</li><li>Embedded Systems</li><li>Voice Recognition</li>
+          <li>Gesture Recognition</li><li>Motor Control</li><li>Assistive Technology</li>
+          <li>Robotics</li><li>IEEE MERCon 2018</li>
+        </ul>
+        <div class="hero__cta">
+          <a href="https://github.com/selakap/SmartWheelChair/" target="_blank" rel="noopener" class="btn btn--primary">Code</a>
+          <a href="https://www.youtube.com/watch?v=9TWWvjahi_c&t=6s" target="_blank" rel="noopener" class="btn btn--ghost">Watch Demo</a>
+          <a href="https://ieeexplore.ieee.org/document/8421945" target="_blank" rel="noopener" class="btn btn--ghost">Read Paper</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Most powered wheelchairs assume the user can reliably operate a joystick &mdash;
+          fine motor control in one hand, sustained over the whole trip. That assumption
+          excludes a meaningful group of users with more severe mobility impairments,
+          who can move a limb roughly or speak clearly, but can't manage the continuous
+          precision a joystick demands. For them, a joystick-only chair isn't a mobility
+          aid, it's a barrier.
+        </p>
+        <p class="project-copy">
+          As a final-year research project (batch G19-13, Department of Electrical
+          Engineering, University of Moratuwa), we set out to build a wheelchair that
+          meets the user where their ability is: the same conventional joystick for
+          those who can use it, a hand-gesture interface for those with coarser motor
+          control, and a voice interface for hands-free operation &mdash; all driving the
+          same chair through one unified control layer.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Joystick Input</h4>
+              <p>The conventional analog joystick remains available as the baseline interface for users who retain enough fine motor control to use it &mdash; and as a familiar fallback if another mode misreads a command.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Gesture Input</h4>
+              <p>Hand and arm movements are captured and classified into directional commands, giving users with limited hand dexterity a way to drive the chair without gripping or precisely steering a joystick.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Voice Input</h4>
+              <p>Spoken directional commands are recognised on-board and mapped to the same command set, enabling fully hands-free operation for users with limited limb mobility.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Unified Control Layer</h4>
+              <p>Regardless of which interface is active, every input is normalised into the same forward / back / left / right / stop instruction set before it reaches the motor driver &mdash; so switching modes never changes how the chair actually responds.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span></div>
+            <div class="process__content">
+              <h4>Motor Response</h4>
+              <p>The motor driver circuit translates the normalised command into motion, moving the wheelchair accordingly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> System Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Joystick<br><small>analog input</small></div>
+            <div class="arch-box arch-box--small">Gesture Sensor<br><small>hand/arm movement</small></div>
+            <div class="arch-box arch-box--small">Voice Module<br><small>speech recognition</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">Control Unit<br><small>Arduino &mdash; mode select &amp; command mapping</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">Motor Driver</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">Wheelchair Motors</div>
+        </div>
+        <p class="project-copy">
+          Each of the three input interfaces is treated as an independent front-end to
+          the same control unit: whichever one is active resolves its raw input (a
+          joystick position, a classified gesture, or a recognised voice command) down
+          to a single shared command, which the control unit forwards to the motor
+          driver. Keeping the mapping layer common to all three interfaces meant the
+          team could build and tune each input mode independently without touching how
+          the chair itself moves.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Demo</h2>
+        <div class="video-embed">
+          <iframe
+            src="https://www.youtube.com/embed/9TWWvjahi_c"
+            title="Smart Wheelchair demo &mdash; University of Moratuwa, batch G19-13"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+          </iframe>
+        </div>
+        <p class="project-copy">
+          Live demonstration of the joystick, gesture, and voice control interfaces
+          driving the same wheelchair prototype.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Publication</h2>
+        <div class="citation-card">
+          <p class="citation-title">Design and Development of a Smart Wheelchair with Multiple Control Interfaces</p>
+          <p>H. G. M. T. Yashoda, A. M. S. Piumal, P. G. S. P. Polgahapitiya, M. M. M. Mubeen, M. A. Viraj J. Muthugala, A. G. Buddhika P. Jayasekara</p>
+          <p>Moratuwa Engineering Research Conference (MERCon), 2018 &middot; IEEE Xplore &middot; DOI: 10.1109/MERCON.2018.8421945</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <p class="project-copy">
+          As a university research prototype rather than a commercial product, a few
+          things are worth keeping in mind:
+        </p>
+        <ul class="timeline__bullets project-copy">
+          <li>Built and evaluated as a proof-of-concept on a single physical prototype, not tested across a range of users or wheelchair models.</li>
+          <li>The joystick interface is retained throughout as a familiar, reliable fallback whenever gesture or voice recognition is uncertain.</li>
+          <li>Full methodology, evaluation results, and hardware detail are documented in the published paper rather than repeated here.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>

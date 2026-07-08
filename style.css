@@ -120,12 +120,31 @@ img {
 
 /* ---------- Buttons ---------- */
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 12px 28px;
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.95rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.btn::after {
+  content: "\2192";
+  transition: transform 0.2s ease;
+}
+
+.btn[target="_blank"]::after {
+  content: "\2197";
+}
+
+.btn:hover::after {
+  transform: translateX(4px);
+}
+
+.btn--back::after {
+  content: none;
 }
 
 .btn--primary {
@@ -685,6 +704,54 @@ img {
 .portal-table a {
   color: var(--accent-2);
   font-weight: 600;
+}
+
+/* ---------- Video Embed ---------- */
+.video-embed {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  padding-bottom: 40.5%; /* 16:9 within max-width */
+  height: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  background: #000;
+  margin-bottom: 16px;
+}
+
+.video-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ---------- Citation Card ---------- */
+.citation-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  max-width: 720px;
+}
+
+.citation-card p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+
+.citation-card p:last-child {
+  margin-bottom: 0;
+}
+
+.citation-card .citation-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1.02rem;
 }
 
 /* ---------- Experience Timeline ---------- */
