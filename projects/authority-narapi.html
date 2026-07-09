@@ -155,6 +155,163 @@
 
     <section class="section section--alt">
       <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
+        <p class="project-copy">
+          The diagrams above show the layers and the fan-out; these show the same
+          two flows ordered in time &mdash; every outbound call, the OAuth2 token
+          exchange, and the audit event that fires whether the lookup succeeds
+          or fails.
+        </p>
+
+        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Phone Search &mdash; <code>GET /api/contact/search</code></h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 590" role="img" aria-label="Sequence diagram of the phone search flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqNar1Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqNar1ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="414" y="102" width="12" height="376" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="124" y1="58" x2="124" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="272" y1="58" x2="272" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="420" y1="58" x2="420" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="568" y1="58" x2="568" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="716" y1="58" x2="716" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="864" y1="58" x2="864" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="1012" y1="58" x2="1012" y2="570" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="60" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="124" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">CTI Client</text>
+            <rect x="208" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="272" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">NarController</text>
+            <rect x="356" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="420" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">NarService</text>
+            <rect x="504" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="568" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">AuthorityHelper</text>
+            <rect x="652" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="716" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">AuthorityManager</text>
+            <rect x="800" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="864" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Civica Authority</text>
+            <rect x="948" y="6" width="128" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="1012" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Audit Service</text>
+            <line x1="124" y1="70" x2="272" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="198" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET /api/contact/search?phone= (Basic Auth)</text>
+            <line x1="272" y1="110" x2="420" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="346" y="103" text-anchor="middle" font-size="11" fill="var(--text-muted)">narLookup(phone)</text>
+            <line x1="420" y1="150" x2="568" y2="150" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="494" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">generateToken()</text>
+            <line x1="568" y1="190" x2="716" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="642" y="183" text-anchor="middle" font-size="11" fill="var(--text-muted)">generateAuthorityToken()</text>
+            <line x1="716" y1="230" x2="864" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="790" y="223" text-anchor="middle" font-size="11" fill="var(--text-muted)">OAuth2 password grant</text>
+            <line x1="864" y1="270" x2="716" y2="270" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar1ArrowMuted)"></line>
+            <text x="790" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">access_token</text>
+            <line x1="420" y1="310" x2="568" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="494" y="303" text-anchor="middle" font-size="11" fill="var(--text-muted)">getNarFromPhone(phone)</text>
+            <line x1="568" y1="350" x2="716" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="642" y="343" text-anchor="middle" font-size="11" fill="var(--text-muted)">getNarFromPhone(contains(mobilePhone,...))</text>
+            <line x1="716" y1="390" x2="864" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="790" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET NameRegister/Names (OData filter)</text>
+            <line x1="864" y1="430" x2="568" y2="430" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar1ArrowMuted)"></line>
+            <text x="716" y="423" text-anchor="middle" font-size="11" fill="var(--text-muted)">matching NAR records</text>
+            <line x1="272" y1="470" x2="1012" y2="470" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar1Arrow)"></line>
+            <text x="642" y="463" text-anchor="middle" font-size="11" fill="var(--text-muted)">processIntegrationCompletedEvent</text>
+            <line x1="272" y1="510" x2="124" y2="510" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar1ArrowMuted)"></line>
+            <text x="198" y="503" text-anchor="middle" font-size="11" fill="var(--text-muted)">200 OK + JSON</text>
+          </svg>
+        </div>
+
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">360&deg; View &mdash; <code>GET /contact/360view</code></h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1108 830" role="img" aria-label="Sequence diagram of the 360 degree view flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqNar2Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqNar2ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="550" y="276" width="344" height="84" fill="none" stroke="var(--accent-3)" stroke-width="1.3" stroke-dasharray="6 4" rx="6" opacity="0.7"></rect>
+            <rect x="550" y="276" width="40" height="18" fill="var(--accent-3)" opacity="0.85" rx="3"></rect>
+            <text x="570" y="289" text-anchor="middle" font-size="10" font-weight="700" fill="#0f0f1a">loop</text>
+            <text x="598" y="289" font-size="10.5" font-style="italic" fill="var(--accent-3)">paginate: $skip+=100 while page=100 rows</text>
+            <rect x="550" y="596" width="344" height="84" fill="none" stroke="var(--accent-3)" stroke-width="1.3" stroke-dasharray="6 4" rx="6" opacity="0.7"></rect>
+            <rect x="550" y="596" width="40" height="18" fill="var(--accent-3)" opacity="0.85" rx="3"></rect>
+            <text x="570" y="609" text-anchor="middle" font-size="10" font-weight="700" fill="#0f0f1a">loop</text>
+            <text x="598" y="609" font-size="10.5" font-style="italic" fill="var(--accent-3)">per parcel: search + 2x GIS req/URL</text>
+            <rect x="464" y="102" width="12" height="616" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="134" y1="58" x2="134" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="302" y1="58" x2="302" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="470" y1="58" x2="470" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="638" y1="58" x2="638" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="806" y1="58" x2="806" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="974" y1="58" x2="974" y2="810" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="60" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="134" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Portal Client</text>
+            <rect x="228" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="302" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">ContactViewController</text>
+            <rect x="396" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="470" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">NarService</text>
+            <rect x="564" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="638" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">AuthorityHelper / Manager</text>
+            <rect x="732" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="806" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Civica Authority</text>
+            <rect x="900" y="6" width="148" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="974" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Audit Service</text>
+            <line x1="134" y1="70" x2="302" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="218" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET /contact/360view?nar=</text>
+            <line x1="302" y1="110" x2="470" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="386" y="103" text-anchor="middle" font-size="11" fill="var(--text-muted)">crmByNar(narId)</text>
+            <line x1="470" y1="150" x2="638" y2="150" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="554" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">generateToken()</text>
+            <line x1="638" y1="190" x2="806" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="722" y="183" text-anchor="middle" font-size="11" fill="var(--text-muted)">OAuth2 password grant</text>
+            <line x1="806" y1="230" x2="638" y2="230" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar2ArrowMuted)"></line>
+            <text x="722" y="223" text-anchor="middle" font-size="11" fill="var(--text-muted)">access_token</text>
+            <line x1="470" y1="270" x2="638" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="554" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">getCrms(narId)</text>
+            <line x1="638" y1="310" x2="806" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="722" y="303" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET CrmByApplicant (OData)</text>
+            <line x1="806" y1="350" x2="638" y2="350" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar2ArrowMuted)"></line>
+            <text x="722" y="343" text-anchor="middle" font-size="11" fill="var(--text-muted)">CRM rows</text>
+            <line x1="302" y1="390" x2="470" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="386" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">narById(narId)</text>
+            <line x1="470" y1="430" x2="638" y2="430" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="554" y="423" text-anchor="middle" font-size="11" fill="var(--text-muted)">getNarById(narId)</text>
+            <line x1="638" y1="470" x2="806" y2="470" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="722" y="463" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET Name Register by id</text>
+            <line x1="806" y1="510" x2="638" y2="510" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar2ArrowMuted)"></line>
+            <text x="722" y="503" text-anchor="middle" font-size="11" fill="var(--text-muted)">resident name + address</text>
+            <line x1="302" y1="550" x2="470" y2="550" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="386" y="543" text-anchor="middle" font-size="11" fill="var(--text-muted)">getRates(narId)</text>
+            <line x1="470" y1="590" x2="638" y2="590" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="554" y="583" text-anchor="middle" font-size="11" fill="var(--text-muted)">getRates(narId)</text>
+            <line x1="638" y1="630" x2="806" y2="630" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="722" y="623" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET RatePayers (OData)</text>
+            <line x1="806" y1="670" x2="638" y2="670" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar2ArrowMuted)"></line>
+            <text x="722" y="663" text-anchor="middle" font-size="11" fill="var(--text-muted)">rate-payers + parcels + signed map URLs</text>
+            <line x1="302" y1="710" x2="974" y2="710" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqNar2Arrow)"></line>
+            <text x="638" y="703" text-anchor="middle" font-size="11" fill="var(--text-muted)">processIntegrationCompletedEvent</text>
+            <line x1="302" y1="750" x2="134" y2="750" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqNar2ArrowMuted)"></line>
+            <text x="218" y="743" text-anchor="middle" font-size="11" fill="var(--text-muted)">renders service_portal (200, HTML)</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          Both flows reuse the same OAuth2 token for every downstream Authority
+          call within a request &mdash; it's generated once and threaded through
+          <code>IntegrationData</code>, not refetched per call. The dashed boxes
+          mark the two points where the service loops: paging through CRM
+          history 100 rows at a time, and resolving each rate-payer down to its
+          parcel plus two signed GIS map URLs.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> AWS Deployment Architecture</h2>
         <div class="arch-diagram">
           <div class="arch-box">Bitbucket Pipelines<br><small>Docker build</small></div>
@@ -188,7 +345,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section section--alt">
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Walkthrough</h2>
 
@@ -257,7 +414,7 @@
       </div>
     </section>
 
-    <section class="section section--alt">
+    <section class="section">
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
         <p class="project-copy">

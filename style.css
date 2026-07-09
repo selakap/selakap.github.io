@@ -555,6 +555,23 @@ img {
 .arch-icon--quality { background: #4E2A84; }
 .arch-icon--database { background: #4053D6; }
 
+/* ---------- Sequence Diagram ---------- */
+.sequence-diagram-wrap {
+  overflow-x: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.sequence-diagram__svg {
+  display: block;
+  min-width: 900px;
+  width: 100%;
+  height: auto;
+}
+
 .arch-box__label small {
   display: block;
   color: var(--text-muted);
