@@ -33,7 +33,7 @@
         <ul class="tag-list">
           <li>Java 17</li><li>Spring Boot</li><li>Python</li><li>Docker</li>
           <li>AWS Lambda</li><li>API Gateway</li><li>Amazon S3</li><li>EventBridge</li>
-          <li>ECS Fargate</li><li>Amazon ECR</li><li>CloudFormation</li>
+          <li>ECS Fargate</li><li>Amazon DynamoDB</li><li>Amazon ECR</li><li>CloudFormation</li>
           <li>Bitbucket Pipelines</li><li>SonarCloud</li>
           <li>Civica Authority</li><li>Content Manager 10</li>
         </ul>
@@ -96,7 +96,7 @@
             <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Sync to Authority &amp; CM10</h4>
-              <p>The task loads that tenant's config from S3, authenticates against Authority and Content Manager 10, creates or updates the CRM record and its attachments in Authority, and pushes documents into CM10 where required.</p>
+              <p>The task loads that tenant's config from S3, then checks DynamoDB for an existing record of this submission's source ID &mdash; skipping it if already processed successfully, or resuming from wherever a prior attempt left off. It authenticates against Authority and Content Manager 10, creates the CRM record and its attachments in Authority, and pushes documents into CM10 where required, recording progress in DynamoDB at each stage.</p>
             </div>
           </div>
           <div class="process__step">
@@ -154,6 +154,12 @@
           <div class="arch-branches">
             <div class="arch-box arch-box--small">Civica Authority<br><small>CRM record + attachments</small></div>
             <div class="arch-box arch-box--small">Content Manager 10<br><small>document sync</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--database" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <div class="arch-box__label">DynamoDB<br><small>idempotency + retry state</small></div>
+            </div>
             <div class="arch-box arch-box--small">Completion Webhook<br><small>status back to source</small></div>
           </div>
         </div>
@@ -165,6 +171,17 @@
           <code>TENANT_ID</code>, so the same Lambda and the same ECS task image
           serve every council &mdash; only the config and credentials resolved from
           S3 differ per tenant.
+        </p>
+        <p class="project-copy">
+          DynamoDB (<code>integrationrecords</code>) is the only durable state in
+          the pipeline: before doing any work, the task looks up the submission's
+          source ID and skips it if it's already succeeded, or resumes from the
+          last completed stage if a previous attempt failed partway through &mdash;
+          up to four retries. The S3 submission payload itself is deleted as soon
+          as the CRM record is created in Authority &mdash; the task doesn't wait
+          for the CM10 and attachment steps to finish &mdash; and the same cleanup
+          runs on any processing failure too, so the ingest bucket never
+          accumulates stale submissions.
         </p>
       </div>
     </section>
@@ -287,6 +304,7 @@ scripts/                  # deploy scripts invoked by bitbucket-pipelines.yml</p
           <li>Multi-tenant by design &mdash; the same Lambda and ECS task image serve every council; only <code>TENANT_ID</code> and its S3-backed config differ.</li>
           <li>The ECS task is intentionally one-shot, not a long-running server, so there's no idle compute cost between submissions.</li>
           <li>Content Manager 10 sync is optional per submission &mdash; not every form needs a document pushed to CM10, only a CRM record in Authority.</li>
+          <li>DynamoDB tracks up to 4 retries per submission, so a transient Authority/CM10 outage doesn't mean the form has to be resubmitted from scratch.</li>
           <li>UAT and PROD are separate CloudFormation deployments driven by Bitbucket Pipelines variables, with a SonarCloud gate ahead of every build.</li>
         </ul>
       </div>

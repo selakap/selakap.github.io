@@ -477,7 +477,7 @@ img {
 .arch-diagram {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
   margin-bottom: 32px;
 }
@@ -507,6 +507,7 @@ img {
 .arch-arrow {
   font-size: 1.4rem;
   color: var(--accent-2);
+  margin-top: 31px;
 }
 
 .arch-branches {
@@ -552,6 +553,7 @@ img {
 .arch-icon--management { background: #DD344C; }
 .arch-icon--devtools { background: #2684FF; }
 .arch-icon--quality { background: #4E2A84; }
+.arch-icon--database { background: #4053D6; }
 
 .arch-box__label small {
   display: block;
