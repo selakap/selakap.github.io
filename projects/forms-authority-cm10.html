@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authority / CM10 Public Forms Integration — Selaka Piumal</title>
+  <meta name="description" content="Case study: an event-driven integration service that syncs public Drupal form submissions into Civica Authority and Content Manager 10 via Lambda, S3, and ECS Fargate.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Authority / CM10 Public Forms Integration</h1>
+        <p class="project-hero__subtitle">
+          An event-driven integration service that takes public form submissions
+          coming out of Drupal and pushes them into <strong>Civica Authority</strong>
+          (records/CRM) and <strong>Content Manager 10</strong> (document management)
+          &mdash; keeping attachments and submission state in sync without anyone
+          re-keying a form by hand.
+        </p>
+        <ul class="tag-list">
+          <li>Java 17</li><li>Spring Boot</li><li>Python</li><li>Docker</li>
+          <li>AWS Lambda</li><li>API Gateway</li><li>Amazon S3</li><li>EventBridge</li>
+          <li>ECS Fargate</li><li>Amazon ECR</li><li>CloudFormation</li>
+          <li>Bitbucket Pipelines</li><li>SonarCloud</li>
+          <li>Civica Authority</li><li>Content Manager 10</li>
+        </ul>
+        <div class="hero__cta">
+          <a href="https://github.com/selakap/forms_authority_cm10_integration" target="_blank" rel="noopener" class="btn btn--primary">View Repo</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Public-facing council forms built in Drupal generate a steady stream of
+          submissions &mdash; rates enquiries, animal registrations, waste requests,
+          each with its own attachments &mdash; that ultimately need to land as a
+          proper record in Civica Authority and, in some cases, as a document in
+          Content Manager 10. Doing that by hand doesn't scale, and a synchronous
+          call straight from the Drupal site into Authority couples a public,
+          internet-facing form directly to an internal line-of-business system:
+          any slowness or outage on the Authority side becomes an outage for the
+          public form.
+        </p>
+        <p class="project-copy">
+          This service decouples the two. Drupal only ever talks to a small,
+          disposable ingest endpoint; everything after that &mdash; validation,
+          authentication, CRM record creation, attachment upload, document
+          management sync &mdash; happens asynchronously, per tenant, with a
+          webhook reporting the result back once it's done.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Form Submission</h4>
+              <p>A public Drupal form posts its submission &mdash; JSON payload plus any attachments &mdash; to an API Gateway endpoint, authenticated with a per-tenant <code>x-api-key</code>.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Ingest &amp; Persist</h4>
+              <p>A lightweight Python Lambda validates the request and writes the submission payload straight to an S3 bucket, then returns immediately &mdash; Drupal never waits on Authority or CM10.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Event Trigger</h4>
+              <p>The S3 object-created event fires an EventBridge rule, which launches a one-shot ECS Fargate task running the Spring Boot integration app &mdash; no server sits idle waiting for work.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Sync to Authority &amp; CM10</h4>
+              <p>The task loads that tenant's config from S3, authenticates against Authority and Content Manager 10, creates or updates the CRM record and its attachments in Authority, and pushes documents into CM10 where required.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span></div>
+            <div class="process__content">
+              <h4>Completion Webhook</h4>
+              <p>Success or failure is reported back to the source system via a completed-event webhook, so status is visible upstream without anyone checking AWS directly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box">Drupal Form<br><small>public council website</small></div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16M20 4v16M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+            </span>
+            <div class="arch-box__label">API Gateway<br><small>x-api-key auth</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">Python Lambda<br><small>validate + ingest</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--storage" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon S3<br><small>submission payload</small></div>
+          </div>
+        </div>
+
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge<br><small>S3 object-created rule</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
+            </span>
+            <div class="arch-box__label">ECS Fargate Task<br><small>Spring Boot, one-shot</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Civica Authority<br><small>CRM record + attachments</small></div>
+            <div class="arch-box arch-box--small">Content Manager 10<br><small>document sync</small></div>
+            <div class="arch-box arch-box--small">Completion Webhook<br><small>status back to source</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          The pipeline is fully event-driven and stateless between steps: nothing
+          polls, and no compute runs unless there's an actual submission to
+          process. Tenant identity flows through the whole chain via
+          <code>TENANT_ID</code>, so the same Lambda and the same ECS task image
+          serve every council &mdash; only the config and credentials resolved from
+          S3 differ per tenant.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>UAT &amp; PROD</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>code quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>Spring Boot &amp; Lambda images</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>stack deploy</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">ECS Task Def<br><small>ecs-task/cloudformation.yml</small></div>
+            <div class="arch-box arch-box--small">Lambda + API Gateway<br><small>python-lambda/cloudformation.yml</small></div>
+            <div class="arch-box arch-box--small">ECR Repositories<br><small>ecr-cloudformation.yml</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          Every push through Bitbucket Pipelines runs a SonarCloud quality scan
+          before anything is built, then packages the Spring Boot app and the
+          Python Lambda as Docker images, pushes them to their own ECR
+          repositories, and applies the CloudFormation stacks that own the ECS
+          task definition, IAM roles, the EventBridge S3 trigger, and the
+          Lambda/API Gateway front door &mdash; separately for UAT and PROD, driven
+          entirely by pipeline variables rather than anything hardcoded in the
+          templates.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <p class="project-copy">
+          Two deployable components share one repo: the Spring Boot sync app
+          that does the real Authority/CM10 work, and a small Python Lambda
+          that's just an authenticated front door into S3.
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/main/java/org/example/publicforms/
+&#9500;&#9472; CivicaAndCMApp.java   # Spring Boot entry point (CommandLineRunner)
+&#9500;&#9472; clients/              # low-level AWS clients (S3)
+&#9500;&#9472; config/               # Spring config: AWS clients, async executor, env binding
+&#9500;&#9472; constants/            # shared string / status constants
+&#9500;&#9472; data/                 # internal request/tracking state (not wire models)
+&#9500;&#9472; helpers/              # orchestration per concern: Authority, CM, Secrets, S3, HTTP, DynamoDB
+&#9500;&#9472; managers/             # lower-level API callers used by helpers
+&#9500;&#9472; models/               # request/response DTOs (Drupal, Authority, CM, secrets)
+&#9492;&#9472; services/             # top-level services &mdash; MainService is the entry flow
+
+python-lambda/app.py     # API Gateway &rarr; S3 ingest Lambda
+cloudformations/          # ECS task + ECR + Lambda/API Gateway stacks
+scripts/                  # deploy scripts invoked by bitbucket-pipelines.yml</pre>
+        </div>
+        <p class="project-copy">
+          The app is deliberately built to run as a one-shot task rather than a
+          long-lived server (<code>WebApplicationType.NONE</code>): it reads
+          <code>BUCKET_NAME</code> and <code>OBJECT_KEY</code> for the submission
+          it was invoked to process, runs the sync, and exits.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <p class="project-copy">
+          Everything is environment-driven &mdash; no per-tenant values are
+          hardcoded, so onboarding a new council is a config and credentials
+          change, not a code change.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>AWS_ASSETS_BUCKET_NAME</code></td><td>S3 bucket holding tenant config / run-state files</td></tr>
+              <tr><td><code>TENANT_ID</code></td><td>Tenant identifier used to resolve the config path</td></tr>
+              <tr><td><code>SECRETS_API</code></td><td>URL used to fetch client secrets at runtime</td></tr>
+              <tr><td><code>AUTHORITY_DEFAULT_NAR_ID</code></td><td>Default NAR id for Authority records</td></tr>
+              <tr><td><code>AUTHORITY_USER</code> / <code>AUTHORITY_PASSWORD</code></td><td>Authority login credentials</td></tr>
+              <tr><td><code>CM_CLIENT_ID</code> / <code>CM_CLIENT_SECRET</code> / <code>CM_USER</code> / <code>CM_PASSWORD</code></td><td>Content Manager 10 credentials</td></tr>
+              <tr><td><code>COMPLETED_EVENT_API_KEY_VALUE</code> / <code>COMPLETED_EVENT_URL</code></td><td>Webhook used to report integration completion status</td></tr>
+              <tr><td><code>BUCKET</code> / <code>PYTHON_BUCKET_KEY</code> / <code>API_KEY</code></td><td>Python Lambda ingest config &amp; API Gateway key</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>Multi-tenant by design &mdash; the same Lambda and ECS task image serve every council; only <code>TENANT_ID</code> and its S3-backed config differ.</li>
+          <li>The ECS task is intentionally one-shot, not a long-running server, so there's no idle compute cost between submissions.</li>
+          <li>Content Manager 10 sync is optional per submission &mdash; not every form needs a document pushed to CM10, only a CRM record in Authority.</li>
+          <li>UAT and PROD are separate CloudFormation deployments driven by Bitbucket Pipelines variables, with a SonarCloud gate ahead of every build.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>

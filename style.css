@@ -515,6 +515,52 @@ img {
   gap: 12px;
 }
 
+/* ---------- Architecture Diagram: service icon badges ---------- */
+.arch-box--icon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.arch-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.arch-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.arch-icon {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.arch-icon--compute { background: #ED7100; }
+.arch-icon--storage { background: #7AA116; }
+.arch-icon--integration { background: #E7157B; }
+.arch-icon--containers { background: #ED7100; }
+.arch-icon--management { background: #DD344C; }
+.arch-icon--devtools { background: #2684FF; }
+.arch-icon--quality { background: #4E2A84; }
+
+.arch-box__label small {
+  display: block;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.8rem;
+  margin-top: 3px;
+}
+
 /* ---------- Mockup Screens ---------- */
 .mockup {
   background: var(--card-bg);
