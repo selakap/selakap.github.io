@@ -254,6 +254,118 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
 
     <section class="section">
       <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
+        <p class="project-copy">
+          The diagrams above show the layers; these show the same two directions
+          ordered in time &mdash; the tenant/JOLT resolution, the outbound auth, and
+          the audit event that fires whether the sync succeeds or fails. Since every
+          layer in a given direction runs inside the same Lambda invocation, the
+          controller/service/JOLT/manager chain is shown as one lifeline with its
+          internal handoffs drawn as self-calls.
+        </p>
+
+        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Spatial &rarr; AssetVision &mdash; <code>PUT /spatials/spatial</code></h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 480" role="img" aria-label="Sequence diagram of the spatial to AssetVision sync flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqAv1Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqAv1ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="454" y="74" width="12" height="368" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="140" y1="66" x2="140" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="460" y1="66" x2="460" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="780" y1="66" x2="780" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="1000" y1="66" x2="1000" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="70" y="6" width="140" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="140" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Munsys OpenSpatial</text>
+            <rect x="330" y="6" width="260" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="460" y="28" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Asset Sync API (AWS Lambda)</text>
+            <text x="460" y="44" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">SpatialController &rarr; SpatialService &rarr; JoltHelper &rarr; AVManager</text>
+            <rect x="706" y="6" width="148" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="780" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">AssetVision</text>
+            <rect x="936" y="6" width="128" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="1000" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Audit Service</text>
+            <line x1="140" y1="80" x2="460" y2="80" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></line>
+            <text x="300" y="73" text-anchor="middle" font-size="11" fill="var(--text-muted)">PUT /spatials/spatial {operation: INS|UPD|DEL} (x-api-key)</text>
+            <path d="M460,112 L512,112 L512,142 L460,142" fill="none" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></path>
+            <text x="518" y="131" font-size="11" fill="var(--text-muted)">validate tenant (x-api-key) &rarr; resolve operation</text>
+            <path d="M460,172 L512,172 L512,202 L460,202" fill="none" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></path>
+            <text x="518" y="191" font-size="11" fill="var(--text-muted)">load tenant JOLT spec &rarr; transform via Chainr (AVAssetCreateReq)</text>
+            <line x1="460" y1="242" x2="780" y2="242" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></line>
+            <text x="620" y="235" text-anchor="middle" font-size="11" fill="var(--text-muted)">OAuth2 password grant (cached 30m)</text>
+            <line x1="780" y1="282" x2="460" y2="282" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv1ArrowMuted)"></line>
+            <text x="620" y="275" text-anchor="middle" font-size="11" fill="var(--text-muted)">access_token</text>
+            <line x1="460" y1="322" x2="780" y2="322" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></line>
+            <text x="620" y="315" text-anchor="middle" font-size="11" fill="var(--text-muted)">create / patch / soft-delete asset (lookup by OpenSpatial GID)</text>
+            <line x1="780" y1="362" x2="460" y2="362" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv1ArrowMuted)"></line>
+            <text x="620" y="355" text-anchor="middle" font-size="11" fill="var(--text-muted)">asset created/updated {assetId}</text>
+            <line x1="460" y1="402" x2="1000" y2="402" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv1Arrow)"></line>
+            <text x="730" y="395" text-anchor="middle" font-size="11" fill="var(--text-muted)">processIntegrationCompletedEvent</text>
+            <line x1="460" y1="442" x2="140" y2="442" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv1ArrowMuted)"></line>
+            <text x="300" y="435" text-anchor="middle" font-size="11" fill="var(--text-muted)">200 OK {status, data.assetId}</text>
+          </svg>
+        </div>
+
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">AssetVision &rarr; Spatial &mdash; <code>POST /assets/asset</code></h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 480" role="img" aria-label="Sequence diagram of the AssetVision to spatial sync flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqAv2Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqAv2ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="454" y="74" width="12" height="368" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="140" y1="66" x2="140" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="460" y1="66" x2="460" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="780" y1="66" x2="780" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="1000" y1="66" x2="1000" y2="460" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="70" y="6" width="140" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="140" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">AssetVision</text>
+            <rect x="330" y="6" width="260" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="460" y="28" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Asset Sync API (AWS Lambda)</text>
+            <text x="460" y="44" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">AssetController &rarr; AssetService &rarr; JoltHelper &rarr; SpatialManager</text>
+            <rect x="706" y="6" width="148" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="780" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Munsys OpenSpatial</text>
+            <rect x="936" y="6" width="128" height="52" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="1000" y="37" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Audit Service</text>
+            <line x1="140" y1="80" x2="460" y2="80" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></line>
+            <text x="300" y="73" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST/PUT /assets/asset {operation} (x-api-key)</text>
+            <path d="M460,112 L512,112 L512,142 L460,142" fill="none" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></path>
+            <text x="518" y="131" font-size="11" fill="var(--text-muted)">validate tenant (x-api-key) &rarr; resolve operation</text>
+            <path d="M460,172 L512,172 L512,202 L460,202" fill="none" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></path>
+            <text x="518" y="191" font-size="11" fill="var(--text-muted)">load tenant JOLT spec &rarr; transform via Chainr (OpenSpatial payload)</text>
+            <line x1="460" y1="242" x2="780" y2="242" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></line>
+            <text x="620" y="235" text-anchor="middle" font-size="11" fill="var(--text-muted)">authenticate (API key / cached JWT)</text>
+            <line x1="780" y1="282" x2="460" y2="282" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv2ArrowMuted)"></line>
+            <text x="620" y="275" text-anchor="middle" font-size="11" fill="var(--text-muted)">token (expiry read from JWT)</text>
+            <line x1="460" y1="322" x2="780" y2="322" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></line>
+            <text x="620" y="315" text-anchor="middle" font-size="11" fill="var(--text-muted)">create / update / delete spatial record (lookup by AssetVision GID)</text>
+            <line x1="780" y1="362" x2="460" y2="362" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv2ArrowMuted)"></line>
+            <text x="620" y="355" text-anchor="middle" font-size="11" fill="var(--text-muted)">200 OK {data.assetId}</text>
+            <line x1="460" y1="402" x2="1000" y2="402" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAv2Arrow)"></line>
+            <text x="730" y="395" text-anchor="middle" font-size="11" fill="var(--text-muted)">processIntegrationCompletedEvent</text>
+            <line x1="460" y1="442" x2="140" y2="442" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAv2ArrowMuted)"></line>
+            <text x="300" y="435" text-anchor="middle" font-size="11" fill="var(--text-muted)">200 OK {status, data.gid}</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          A third endpoint, <code>POST /spatials/trace</code>, follows the same shape in the
+          spatial-to-AssetVision direction: OpenSpatial posts a completed network-trace
+          event, and the service attaches it back onto the matching AssetVision job by ID.
+          It's omitted above for brevity since it reuses this exact chain.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> AWS Deployment Architecture</h2>
         <div class="arch-diagram">
           <div class="arch-box">Bitbucket Pipelines<br><small>deployLambda-UAT</small></div>
