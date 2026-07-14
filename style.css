@@ -686,6 +686,43 @@ img {
   overflow-x: auto;
 }
 
+/* ---------- Demo Video ---------- */
+.video-frame {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.video-frame__bar {
+  display: flex;
+  gap: 6px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.video-frame__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--card-border);
+}
+
+.video-frame video {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #000;
+}
+
+.video-frame__caption {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 /* ---------- Portal Mockup (Authority NAR case study) ---------- */
 .portal-mock {
   background: var(--card-bg);
