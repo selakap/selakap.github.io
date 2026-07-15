@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civica Authority &harr; Assetic Work Requests &amp; Work Orders Integration — Selaka Piumal</title>
+  <meta name="description" content="Case study: a serverless AWS Lambda integration that keeps Civica Authority CRM tasks in sync with Assetic Work Requests and Work Orders, on a 5-minute EventBridge schedule with DynamoDB-backed idempotency and retries.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Civica Authority &harr; Assetic Work Requests &amp; Work Orders Integration</h1>
+        <p class="project-hero__subtitle">
+          A serverless AWS Lambda integration that keeps <strong>Civica Authority</strong>
+          (CRM / customer request management) and <strong>Assetic</strong> (asset &amp; works
+          management) in sync for a council or utility tenant &mdash; new CRM tasks
+          automatically become Assetic Work Requests, and Work Request/Work Order
+          lifecycle events in Assetic flow back as CRM task updates, with DynamoDB-backed
+          idempotency and automatic retries on every 5-minute run.
+        </p>
+        <ul class="tag-list">
+          <li>Java 17</li><li>Maven</li><li>AWS Lambda</li><li>Docker</li>
+          <li>AWS SAM</li><li>Amazon EventBridge</li><li>Amazon DynamoDB</li>
+          <li>Amazon S3</li><li>CloudFormation</li><li>Bitbucket Pipelines</li>
+          <li>SonarCloud</li><li>Civica Authority</li><li>Assetic</li>
+        </ul>
+        <div class="hero__cta">
+          <a href="https://github.com/selakap/civica-assetic-CrmWorkRequestsAndWorkOrder-integration" target="_blank" rel="noopener" class="btn btn--primary">View Repository</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          A council's field operations usually run on two systems that don't talk to
+          each other: <strong>Civica Authority</strong>, where a resident's request
+          becomes a CRM task, and <strong>Assetic</strong>, where the actual inspection
+          or repair is scheduled and tracked as a Work Request or Work Order. Someone
+          has to notice a new investigation task, manually raise the matching Work
+          Request, then chase Assetic for status &mdash; inspector assigned, rejected,
+          completed &mdash; and manually reflect that back onto the CRM task so the
+          resident's request shows accurate progress.
+        </p>
+        <p class="project-copy">
+          Neither system exposes a webhook the other can lean on, so this integration
+          runs as a scheduled poller instead of an event listener: every five minutes
+          it checks both systems for anything new since the last run, in both
+          directions, and reconciles the difference &mdash; while making sure a
+          transient failure on either side never means the request has to start over.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <p class="project-copy">
+          A single Lambda invocation, fired by EventBridge every five minutes, runs
+          four stages <strong>sequentially</strong> &mdash; each stage finishes before the
+          next starts, but the items inside a stage are farmed out to a 100-thread
+          pool and processed concurrently.
+        </p>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Authority &rarr; Assetic</h4>
+              <p><code>AuthorityTasksProcessor</code> polls Authority for CRM tasks created since the last run, matches each one's category and action code against the tenant's configured mapping, then dispatches it: an <code>ACTN</code> (investigate) task creates a brand-new Assetic Work Request and uploads its Authority attachments; a <code>CRF*</code> (further information) task appends its notes as supporting information onto the existing Work Request.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Assetic &rarr; Authority: Work Requests</h4>
+              <p><code>AsseticMainWRsProcessor</code> polls Work Requests modified since the last run, keeps only the ones whose <code>ExternalIdentifier</code> matches the Authority account pattern, and independently checks three conditions per Work Request &mdash; inspector assigned, status rejected/cancelled, new supporting info &mdash; opening or closing the matching <code>ASS*</code> Authority task for whichever apply.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Assetic &rarr; Authority: Work Orders</h4>
+              <p><code>AsseticMainWOsProcessor</code> polls Work Orders modified since the last run and evaluates four conditions per order &mdash; created, in-progress, completed, new supporting info &mdash; opening the "works approved" and "assigned to a team" tasks, closing the original investigate task on completion, and adding notes for anything else.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span></div>
+            <div class="process__content">
+              <h4>Retry</h4>
+              <p><code>RetrierProcessor</code> runs last: it re-uploads attachments for recently-succeeded Work Requests in case the original upload failed, then scans DynamoDB for entries stuck in <code>received</code>/<code>failed*</code> for more than 3 minutes with fewer than 4 retries, and re-dispatches each back through the processor matching its source id &mdash; anything still failing after 4 attempts is left for manual investigation.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge Rule<br><small>every 5 minutes</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>container image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">AuthorityToAsseticHandler<br><small>orchestrates the 4 stages</small></div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box arch-box--small">1. AuthorityTasksProcessor</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--small">2. AsseticMainWRsProcessor</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--small">3. AsseticMainWOsProcessor</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--small">4. RetrierProcessor</div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Every Stage</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Civica Authority<br><small>shared OAuth2 bearer token</small></div>
+            <div class="arch-box arch-box--small">Assetic<br><small>Work Requests &amp; Work Orders</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--database" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <div class="arch-box__label">DynamoDB<br><small>idempotency + retry state</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>tenant config + run bookmarks</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook<br><small>external monitoring</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          There's no persistent server component: EventBridge fires the container-image
+          Lambda, it authenticates against Authority once per invocation and reuses that
+          token across all four stages, and everything each stage needs to decide what's
+          "new" &mdash; per-tenant category/action-code mappings and per-poll bookmarks
+          &mdash; is read from S3 rather than hardcoded, so the same image serves every
+          tenant.
+        </p>
+        <p class="project-copy">
+          DynamoDB (<code>integrationrecords</code>) is the only durable state: every
+          processed item gets a row keyed by direction (<code>tenant_integrations_id</code>)
+          and source id, recording status, retry count, and the downstream id it
+          produced &mdash; so an already-succeeded item is never reprocessed, and a
+          failed one resumes instead of duplicating work.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
+        <p class="project-copy">
+          The diagrams above show the topology; this integration runs both ways inside
+          the same 5-minute invocation, so here are both directions ordered in time
+          &mdash; the shared OAuth2 token, the DynamoDB idempotency check on each side,
+          and the completed-event webhook that fires whether a step succeeds or fails.
+        </p>
+
+        <h3 style="margin: 8px 0 16px; font-size:1.1rem;">Stage 1 &mdash; Authority &rarr; Assetic (<code>ACTN</code> investigate task)</h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 980 650" role="img" aria-label="Sequence diagram of the Authority to Assetic sync flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqAsArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqAsArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="236" y="64" width="12" height="506" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="620" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">EventBridge</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Assetic</text>
+            <rect x="826" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="882" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">RunTask (every 5 min)</text>
+
+            <line x1="242" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="306" y="103" text-anchor="middle" font-size="11" fill="var(--text-muted)">OAuth2 token request</text>
+            <line x1="370" y1="150" x2="242" y2="150" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAsArrowMuted)"></line>
+            <text x="306" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">access_token</text>
+
+            <line x1="242" y1="190" x2="498" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="370" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(config.json + last_runtime_authority.json)</text>
+
+            <line x1="242" y1="230" x2="370" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="306" y="223" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET tasks since last run</text>
+            <line x1="370" y1="270" x2="242" y2="270" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAsArrowMuted)"></line>
+            <text x="306" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">task list</text>
+
+            <line x1="242" y1="310" x2="626" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="434" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id) &mdash; skip if already succeeded</text>
+
+            <line x1="242" y1="350" x2="370" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="306" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET linked name / property / GPS</text>
+
+            <line x1="242" y1="390" x2="754" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="498" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST create Work Request + attachments</text>
+            <line x1="754" y1="430" x2="242" y2="430" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAsArrowMuted)"></line>
+            <text x="498" y="423" text-anchor="middle" font-size="11" fill="var(--text-muted)">workRequestId</text>
+
+            <line x1="242" y1="470" x2="370" y2="470" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="306" y="463" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST confirmation comment</text>
+
+            <line x1="242" y1="510" x2="626" y2="510" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="434" y="503" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">PutItem(status, retry_count)</text>
+
+            <line x1="242" y1="550" x2="882" y2="550" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
+            <text x="562" y="543" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band on the Lambda lifeline is the invocation's active
+          lifetime; dashed arrows are responses, solid arrows are requests.
+        </p>
+
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">Stage 2 &mdash; Assetic &rarr; Authority (Work Request: inspector assigned)</h3>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 850 500" role="img" aria-label="Sequence diagram of the Assetic to Authority sync flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqAs2Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqAs2ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="108" y="64" width="12" height="396" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="470" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Assetic</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(last_runtime_assetic_work_request.json)</text>
+
+            <line x1="114" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="242" y="103" text-anchor="middle" font-size="11" fill="var(--text-muted)">GET Work Requests modified since last run</text>
+            <line x1="370" y1="150" x2="114" y2="150" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAs2ArrowMuted)"></line>
+            <text x="242" y="143" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">work request list (filtered by ExternalIdentifier)</text>
+
+            <line x1="114" y1="190" x2="498" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="306" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id=wrInspect{account}) &mdash; already processed?</text>
+
+            <line x1="114" y1="230" x2="626" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="370" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET existing ASS2 task for account</text>
+            <line x1="626" y1="270" x2="114" y2="270" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqAs2ArrowMuted)"></line>
+            <text x="370" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">task found / not found</text>
+
+            <line x1="114" y1="310" x2="626" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="370" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST open ASS2 task + note (inspector assigned)</text>
+
+            <line x1="114" y1="350" x2="626" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="370" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST close task (CAC determination)</text>
+
+            <line x1="114" y1="390" x2="498" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="306" y="383" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">PutItem(status=success, target_id=wrInspect{account})</text>
+
+            <line x1="114" y1="430" x2="754" y2="430" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
+            <text x="434" y="423" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          <code>AsseticWRProcessor</code> actually checks three conditions per Work
+          Request independently &mdash; inspector assigned (shown above), rejected/cancelled,
+          and new supporting info &mdash; so more than one can fire for the same item.
+          Stage 3 (Work Orders) and the retry stage follow this identical
+          poll&nbsp;&rarr;&nbsp;check DynamoDB&nbsp;&rarr;&nbsp;act on Authority&nbsp;&rarr;&nbsp;record&nbsp;&rarr;&nbsp;webhook
+          shape as well.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Task/Status Code Reference</h2>
+        <p class="project-copy">
+          Every direction is driven off Authority's own workflow action codes, mapped
+          in <code>TenantConstants</code>:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Code</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>ACTN</code></td><td>New investigation task &rarr; creates an Assetic Work Request</td></tr>
+              <tr><td><code>CRF</code></td><td>Further-information task &rarr; adds Work Request supporting info</td></tr>
+              <tr><td><code>ASS1</code></td><td>Opened when a Work Request is rejected/cancelled in Assetic</td></tr>
+              <tr><td><code>ASS2</code></td><td>Opened when an inspector is assigned in Assetic</td></tr>
+              <tr><td><code>ASS3</code></td><td>Opened when a Work Order is created in Assetic</td></tr>
+              <tr><td><code>ASS4</code></td><td>Opened when a Work Order moves in-progress</td></tr>
+              <tr><td><code>ASS5</code></td><td>Opened for new Work Request supporting info</td></tr>
+              <tr><td><code>CAC</code> / <code>CCOM</code></td><td>Determination codes used to close <code>ASS*</code> and <code>ACTN</code> tasks respectively</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          DynamoDB's <code>current_status</code> moves through
+          <code>received</code> &rarr; <code>success</code> | <code>failed</code> |
+          <code>failed_actn</code> (a task-notes-specific failure), which is what the
+          retry stage scans for.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Data &amp; Persistence</h2>
+        <p class="project-copy">
+          The S3 bucket holds everything that varies per tenant: which CRM categories
+          should raise a Work Request, and where each polling loop last left off.
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">S3 bucket layout</span>
+          <pre>TenantConfigurations/
+&#9492;&#9472; {TENANT_ID}/
+    &#9500;&#9472; AuthorityTaskConfig/
+    &#9474;   &#9492;&#9472; config.json              # category_id + action_code[] -&gt; raise a WR?
+    &#9492;&#9472; last_run_time/
+        &#9500;&#9472; last_runtime_authority.json
+        &#9500;&#9472; last_runtime_assetic_work_request.json
+        &#9492;&#9472; last_runtime_assetic_work_order.json</pre>
+        </div>
+        <p class="project-copy">
+          DynamoDB's <code>integrationrecords</code> table is purely for idempotency and
+          retry bookkeeping &mdash; one row per processed item, partitioned by direction
+          (<code>tenant_integrations_id</code>) and sorted by <code>source_id</code>,
+          which encodes enough context to route a retry back to the right processor
+          (e.g. <code>wrInspect{account}</code>, <code>woNew{account}</code>). Every
+          terminal outcome, success or failure, also fires an
+          <code>IntegrationCompletedEvent</code> to an external webhook so status is
+          visible without checking CloudWatch directly.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>develop &amp; production</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>mvn verify + quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>Docker image, amazoncorretto:17</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda, role, EventBridge rule</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>mvn clean package</code> builds a shaded fat jar; the <code>Dockerfile</code>
+          builds on <code>amazoncorretto:17</code> and runs it through the Lambda Runtime
+          Interface Client. <code>cloudformations/cloudformation.yml</code> provisions the
+          image-based Lambda, an execution role scoped to
+          <code>TenantConfigurations/*</code> in S3 plus DynamoDB and VPC/log permissions,
+          a security group, and the 5-minute EventBridge rule &mdash; separate stacks for
+          <code>develop</code> and <code>production</code>, both driven by Bitbucket
+          Pipelines variables. A dedicated <code>run-sonar-scan-quality-gw</code> pipeline
+          runs the SonarCloud gate ahead of every build.
+        </p>
+        <p class="project-copy">
+          Locally, the same container image runs through
+          <a href="https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html" target="_blank" rel="noopener">AWS SAM</a>:
+          <code>sam build</code> compiles inside a container matching the Dockerfile, and
+          <code>sam local invoke</code> (or <code>sam local start-api</code>, which exposes
+          the same handler behind a local <code>POST /crm</code> route) triggers a real
+          run against whichever Authority/Assetic/AWS endpoints are configured in
+          <code>template.yaml</code> &mdash; there's no mock layer, so local runs are pointed
+          at sandbox tenants rather than production.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/main/java/org/example/integration/tenant/
+&#9500;&#9472; handlers/     AuthorityToAsseticHandler   # Lambda entry point, orchestrates the 4 stages
+&#9500;&#9472; processors/   AuthorityTasksProcessor, AuthorityProcessableTaskProcessor,
+&#9474;               AuthorityAttachmentsProcessor, RetrierProcessor,
+&#9474;               AsseticMainWRsProcessor / AsseticWRProcessor / AsseticWR*Processor,
+&#9474;               AsseticMainWOsProcessor / AsseticWOProcessor / AsseticWO*Processor
+&#9500;&#9472; managers/     AuthorityManager, AsseticManager, AuthorityTaskManager,
+&#9474;               DynamoManager, EventManager, IntegrationCompletedEventManager
+&#9500;&#9472; operators/    HttpOperator (java.net.http), DynamoOperator &amp; S3Operator (AWS SDK v2)
+&#9500;&#9472; models/       Jackson request/response DTOs for the Authority &amp; Assetic REST APIs
+&#9500;&#9472; data/         Plain data-holder classes passed between layers
+&#9492;&#9472; constants/    TenantConstants &mdash; endpoints, env var keys, status/task codes
+
+cloudformations/cloudformation.yml   # production infrastructure
+template.yaml                         # local/dev SAM template (adds POST /crm)
+bitbucket-pipelines.yml               # develop, production &amp; SonarCloud pipelines</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <p class="project-copy">
+          Everything is supplied via Lambda environment variables &mdash; no per-tenant
+          values are hardcoded, so onboarding a new council is a config and credentials
+          change, not a code change.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>TENANT_ID</code></td><td>Numeric tenant identifier, also the S3 config path segment</td></tr>
+              <tr><td><code>TENANT_INTEGRATION_ID_CIVICA_TO_ASSETIC</code> / <code>_ASSETIC_TO_CIVICA</code></td><td>Direction ids stamped on every DynamoDB record and webhook event</td></tr>
+              <tr><td><code>AUTHORITY_HOST</code> / <code>AUTHORITY_USER</code> / <code>AUTHORITY_PASSWORD</code></td><td>Authority hostname and resource-owner password grant credentials</td></tr>
+              <tr><td><code>AUTHORITY_CLIENT_ID</code> / <code>AUTHORITY_CLIENT_SECRET</code></td><td>Authority OAuth2 client credentials</td></tr>
+              <tr><td><code>ASSETIC_HOST</code> / <code>ASSETIC_API_BASIC</code></td><td>Assetic hostname and pre-encoded HTTP Basic credential</td></tr>
+              <tr><td><code>AWS_ACCESS_KEY_INTEGRATION</code> / <code>AWS_SECRET_KEY_INTEGRATION</code> / <code>AWS_REGION_INTEGRATION</code></td><td>Explicit AWS credentials for the S3/DynamoDB SDK clients</td></tr>
+              <tr><td><code>AWS_BUCKET_NAME</code> / <code>AUTHORITY_CONFIG_CONFIGFILE_NAME</code></td><td>S3 bucket for tenant config + bookmarks, and the config file's key</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Completed-event webhook endpoint and API key</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>Fully scheduled, not event-driven &mdash; a single EventBridge rule fires the Lambda every 5 minutes, and each of the 4 stages polls for changes since its own last-run bookmark on S3.</li>
+          <li>Within a stage, individual tasks/Work Requests/Work Orders are processed concurrently across a 100-thread pool, even though the 4 stages themselves run one after another.</li>
+          <li>A Work Request or Work Order can trigger more than one Authority task per poll &mdash; each condition (inspector assigned, rejected, in-progress, completed, new note) is checked independently rather than as a single state machine.</li>
+          <li>DynamoDB tracks up to 4 retries per item, with a 3-minute cool-down before a <code>received</code>/<code>failed</code> entry is retried, so an attempt still in flight isn't raced by the next run.</li>
+          <li>Ships as a container-image Lambda, so local testing runs through AWS SAM/Docker against real sandbox Authority and Assetic endpoints &mdash; there's no mock/stub layer.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
