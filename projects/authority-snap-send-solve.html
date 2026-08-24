@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civica Authority &harr; Snap Send Solve Integration | Selaka Piumal</title>
+  <meta name="description" content="Case study: two cooperating services, a scheduled AWS Lambda and a multi-tenant ECS Fargate CRM API, that turn Snap Send Solve citizen reports into Civica Authority CRM records and sync status back out, correlated through a shared DynamoDB table.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Civica Authority &harr; Snap Send Solve Integration</h1>
+        <p class="project-hero__subtitle">
+          Two independently deployed services that together form one bidirectional loop
+          between <strong>Snap Send Solve</strong> (a citizen issue-reporting app) and
+          <strong>Civica Authority</strong> (council CRM): a scheduled AWS Lambda pulls
+          Authority activity out to Snap Send Solve, and a multi-tenant ECS Fargate API
+          turns new Snap Send Solve reports into fully resolved Authority CRM records,
+          correlated through a shared DynamoDB idempotency table so neither service needs
+          to know the other's internals.
+        </p>
+        <ul class="tag-list">
+          <li>Java 17 / 21</li><li>Spring Boot</li><li>AWS Lambda</li><li>ECS Fargate</li>
+          <li>Civica Authority</li><li>Snap Send Solve API</li><li>JOLT</li>
+          <li>Amazon DynamoDB</li><li>Amazon S3</li><li>Application Load Balancer</li>
+          <li>Multi-Tenant</li><li>Bitbucket Pipelines</li><li>SonarCloud</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Residents report issues, potholes, illegal dumping, damaged signage, through the
+          <strong>Snap Send Solve</strong> app, but the council's actual workflow, the
+          CRM record, the assigned officer, checklist data, attachments, and the
+          eventual close-out, all lives in <strong>Civica Authority</strong>. Left
+          disconnected, someone has to manually re-key every new Snap Send Solve report
+          into Authority as a CRM case, resolve who the requestor actually is, work out
+          which property the address belongs to, and then separately remember to update
+          Snap Send Solve every time that CRM case changes so the resident isn't left
+          staring at a report that says "Open" long after the work is done.
+        </p>
+        <p class="project-copy">
+          Rather than one monolithic integration, this was built as two focused services
+          that each own one direction of the sync and never call each other directly:
+          a multi-tenant CRM API that any tenant's inbound integration can POST a report
+          to, and a scheduled job that owns everything about polling Authority and
+          talking back to Snap Send Solve for one specific tenant.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Two Services, One Loop</h2>
+        <p class="project-copy">
+          <strong>The CRM connector</strong> (<code>s3_civica_crm_connector_service</code>) is a
+          standing Spring Boot API on ECS Fargate. It has no idea Snap Send Solve exists;
+          it just accepts a generic "report" payload over HTTP, resolves which tenant
+          it belongs to from the request's hostname, and creates the matching Authority
+          CRM record.
+        </p>
+        <p class="project-copy">
+          <strong>The scheduled task</strong> (<code>s3_authority_sss_integration</code>,
+          built first for an Australian council) is an AWS Lambda that runs every 5 minutes. It
+          owns the Snap Send Solve side entirely: it pulls new Snap Send Solve reports and
+          forwards them to the CRM connector's public URL, then separately polls Authority
+          for task comments and CRM closures and pushes those back to Snap Send Solve as
+          status updates, messages, or an external-agency triage.
+        </p>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Discover New Reports</h4>
+              <p><code>SSSReportService</code> polls the Snap Send Solve API for reports created since the last run (bookmarked on S3) and POSTs each one, as-is, to the CRM connector's tenant-scoped URL with an <code>x-api-key</code> header.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Resolve the Tenant</h4>
+              <p>The CRM connector reads the request's <code>host</code> header (e.g. <code>council-df9dwe45.&hellip;</code>), splits it into a tenant name and recipe code, resolves the tenant's numeric code via a central SmartGlue portal API, and loads that tenant's cached config and secrets (60-minute TTL) before validating the caller's <code>x-api-key</code>.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Transform &amp; Resolve the Requestor</h4>
+              <p>A tenant-specific JOLT spec reshapes the raw report into an Authority CRM payload. The reporter is matched against Authority's Name Register by email and by the last 9 digits of their phone number; no match falls back to either a configured default NAR id or creating a brand-new name record inline.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Create the CRM Record</h4>
+              <p>The connector geocodes the report's address to an Authority parcel, builds the checklist items configured for that tenant and category, creates the CRM record and property link in Authority, then uploads every attachment, downloading it first if the report only supplied a URL.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Record the Correlation</h4>
+              <p>A DynamoDB row is written keyed by the new Authority CRM id as <code>target_id</code> and the original Snap Send Solve report id as <code>source_id</code>, partitioned under the CRM connector's own tenant-integration id. This one row is what lets the scheduled task find its way back later.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">6</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Sync Task Comments Out</h4>
+              <p>Back in the scheduled task, <code>TaskService</code> polls Authority for workflow tasks matching a configured action code, looks up the DynamoDB row to confirm this CRM actually came from the connector, and posts the task's comment to Snap Send Solve as a message to the reporter.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">7</span></div>
+            <div class="process__content">
+              <h4>Sync Closure &amp; Triage Out</h4>
+              <p><code>CrmService</code> polls modified Authority CRMs; an in-progress CRM updates the Snap Send Solve report's status, and a closed CRM either closes the report outright or, if Authority recorded a referral to an external agency, looks up that agency's Snap Send Solve authority id from a tenant config mapping and triages the report to them instead.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge Rule<br><small>every 5 minutes, per tenant</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>s3_authority_sss_integration</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--reporting" aria-hidden="true">SSS</span>
+            <div class="arch-box__label">Snap Send Solve API<br><small>reports, messages, triage</small></div>
+          </div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--reporting" aria-hidden="true">SSS</span>
+            <div class="arch-box__label">New report<br><small>forwarded by the Lambda</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">ALB</span>
+            <div class="arch-box__label">Shared ALB<br><small>routes /crm by hostname</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">ECS Fargate<br><small>s3_civica_crm_connector_service</small></div>
+          </div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Both Services</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Civica Authority<br><small>CRM, NAR, tasks, checklists, attachments</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--database" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <div class="arch-box__label">DynamoDB <code>integrationrecords</code><br><small>shared idempotency &amp; correlation table</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>tenant config, secrets, JOLT specs, bookmarks</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook<br><small>external monitoring</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          Neither service ever calls the other's internal APIs. The scheduled task only
+          knows the connector's public, tenant-scoped URL (configured per deployment as
+          <code>S3_CRM_API</code>) behind the same shared Application Load Balancer used
+          across this developer's other Civica integrations; the connector only knows it
+          received a report over HTTP. The only thing that ties a Snap Send Solve report
+          to the Authority CRM it produced is one row in a DynamoDB table both services
+          happen to write to, using each other's ids as opposite keys.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Cross-Service Correlation via DynamoDB</h2>
+        <p class="project-copy">
+          This is the piece that makes two loosely coupled services behave like one
+          coherent integration. When the CRM connector creates an Authority CRM, it
+          writes a row with the CRM id as <code>target_id</code> and the Snap Send Solve
+          report id as <code>source_id</code>. Later, when the scheduled task sees that
+          same CRM show up in its own poll of Authority, it doesn't know or care that a
+          separate service created it, it just queries <code>integrationrecords</code> by
+          <code>target_id</code>: a hit means "this CRM originated from a Snap Send Solve
+          report, and here is that report's id to push the update to."
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Written by</th><th>source_id</th><th>target_id</th><th>Read by</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>CRM connector (report intake)</td><td>Snap Send Solve report id</td><td>Authority CRM id</td><td>Scheduled task, <code>isCrmInCrmConnector</code></td></tr>
+              <tr><td>Scheduled task (task sync)</td><td><code>{taskId}/{crmAccount}</code></td><td>n/a</td><td>RetrierService, on failure</td></tr>
+              <tr><td>Scheduled task (CRM sync)</td><td><code>Close|Inprogress/{crmAccount}</code></td><td>n/a</td><td>RetrierService, on failure</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          If a CRM shows up in Authority that the connector never created, the lookup
+          simply comes back empty and the scheduled task skips it silently, so this loop
+          only ever touches CRMs it's actually responsible for, never a council's other,
+          unrelated Authority workflows.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: Report Intake</h2>
+        <p class="project-copy">
+          A new Snap Send Solve report becoming an Authority CRM record, end to end.
+        </p>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 560" role="img" aria-label="Sequence diagram of a new Snap Send Solve report becoming an Authority CRM record" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqSssArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqSssArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="620" y="64" width="12" height="416" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="530" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">EventBridge</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Snap Send Solve</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">ALB</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">CRM Connector</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="826" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="882" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">Invoke (every 5 min)</text>
+
+            <line x1="242" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="306" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET reports since last run</text>
+            <line x1="370" y1="150" x2="242" y2="150" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqSssArrowMuted)"></line>
+            <text x="306" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">report list</text>
+
+            <line x1="242" y1="190" x2="498" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="370" y="183" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST /crm (x-api-key, tenant host)</text>
+
+            <line x1="498" y1="230" x2="626" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="562" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">forward by hostname rule</text>
+
+            <line x1="626" y1="270" x2="754" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="690" y="263" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET names (email / phone match)</text>
+
+            <line x1="626" y1="310" x2="754" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="690" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET parcel by address</text>
+
+            <line x1="626" y1="350" x2="754" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="690" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST create CRM + property link</text>
+            <line x1="754" y1="390" x2="626" y2="390" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqSssArrowMuted)"></line>
+            <text x="690" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">CRM formatted account</text>
+
+            <line x1="626" y1="430" x2="754" y2="430" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="690" y="423" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST attachments + task comments</text>
+
+            <line x1="626" y1="470" x2="882" y2="470" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSssArrow)"></line>
+            <text x="754" y="463" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">PutItem(source_id=report, target_id=CRM)</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band marks the CRM connector's active lifetime for this request;
+          everything from name resolution through the DynamoDB write happens inside the
+          same async request.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: Status Sync Back Out</h2>
+        <p class="project-copy">
+          The same CRM later moving in Authority, closing with an external referral, and
+          that closure reaching the citizen in Snap Send Solve.
+        </p>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1010 460" role="img" aria-label="Sequence diagram of an Authority CRM closure syncing back to Snap Send Solve" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqSss2Arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqSss2ArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="108" y="64" width="12" height="356" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Snap Send Solve</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET CRMs modified since last run</text>
+
+            <line x1="114" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="242" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(target_id=CRM id): is this ours?</text>
+            <line x1="370" y1="150" x2="114" y2="150" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqSss2ArrowMuted)"></line>
+            <text x="242" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">source_id = original SSS report id</text>
+
+            <line x1="114" y1="190" x2="242" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="178" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET external agency referral</text>
+
+            <line x1="114" y1="230" x2="498" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="306" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(tenant triage-authority mapping)</text>
+
+            <line x1="114" y1="270" x2="626" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="370" y="263" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET Snap Send Solve authorities for report</text>
+
+            <line x1="114" y1="310" x2="626" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="370" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST triage report to matched authority</text>
+
+            <line x1="114" y1="350" x2="370" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="242" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">UpdateItem(status=success)</text>
+
+            <line x1="114" y1="390" x2="754" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqSss2Arrow)"></line>
+            <text x="434" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          A closed CRM with no external referral simply closes the Snap Send Solve report
+          directly instead of triaging it; the diagram above shows the triage branch since
+          it exercises the tenant config lookup this developer built specifically for
+          multi-agency councils.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Multi-Tenant Resolution</h2>
+        <p class="project-copy">
+          The CRM connector is deployed once and serves every tenant on the SmartGlue
+          platform, not just one council. Tenant identity comes entirely from the request,
+          never from a code path:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Step</th><th>Source</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>1. Parse host header</td><td><code>{tenant}-{recipe}.domain</code></td><td>Tenant name + recipe code</td></tr>
+              <tr><td>2. Resolve tenant code</td><td>SmartGlue portal tenant-code API</td><td>Numeric tenant code</td></tr>
+              <tr><td>3. Build client key</td><td><code>{tenantCode}-{recipeCode}</code></td><td>Cache key for config &amp; secrets</td></tr>
+              <tr><td>4. Load &amp; cache config</td><td>S3 <code>TenantConfigurations/{clientKey}/config.json</code></td><td>Authority creds, JOLT specs, checklist &amp; task mappings (60-min TTL)</td></tr>
+              <tr><td>5. Authenticate the caller</td><td><code>x-api-key</code> header vs. cached config</td><td>401 on mismatch, before any Authority call is made</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          The same shared Application Load Balancer routes <code>/crm</code>,
+          <code>/crm/*</code>, and <code>/actuator/*</code> to this one ECS service for
+          every tenant hostname; there is no per-tenant infrastructure to provision, only
+          a new S3 config object and a new hostname on the ALB listener rule.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <p class="project-copy">
+          Two separate pipelines, two separate compute shapes, one shared quality gate.
+        </p>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>UAT &amp; PROD, per repo</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>mvn verify + quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>separate repo per service</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda vs. ECS Fargate stack</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <strong><code>s3_authority_sss_integration</code></strong> builds a shaded jar and a
+          container image on <code>amazoncorretto</code>, deployed as an image-based
+          Lambda with a <code>cron(0/5 * * * ? *)</code> EventBridge rule, one CloudFormation
+          stack per client under <code>cloudformations/{council}/{uat,prod}</code>.
+        </p>
+        <p class="project-copy">
+          <strong><code>s3_civica_crm_connector_service</code></strong> deploys as a Fargate
+          task (256 CPU / 512 MB) behind the shared <code>SmartGlue-Integrations</code> ECS
+          cluster and ALB, with a health check on <code>/crm/healthz</code> and a task role
+          scoped to the SmartGlue S3 bucket, DynamoDB, and Athena/Glue (used elsewhere on
+          the platform for report querying). Both repos run a dedicated SonarCloud pipeline
+          on every push.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">s3_authority_sss_integration (scheduled Lambda)</span>
+          <pre>src/main/java/.../sss/
+&#9500;&#9472; LambdaHandler.java            # Lambda entry point
+&#9500;&#9472; services/
+&#9474;   &#9500;&#9472; MainService.java          # orchestrates task -&gt; crm -&gt; retry -&gt; report, in sequence
+&#9474;   &#9500;&#9472; TaskService.java          # Authority task comments -&gt; SSS messages
+&#9474;   &#9500;&#9472; CrmService.java           # Authority CRM status/closure -&gt; SSS status/triage
+&#9474;   &#9500;&#9472; RetrierService.java       # re-drives failed DynamoDB entries
+&#9474;   &#9492;&#9472; SSSReportService.java     # new SSS reports -&gt; POST to the CRM connector
+&#9500;&#9472; async/            per-task / per-crm concurrent processors
+&#9500;&#9472; managers/         AuthorityManager, SSSManager, DynamoManager, ConfigManager
+&#9500;&#9472; helpers/          thin wrappers around the managers
+&#9492;&#9472; models/           Authority CRM/Task, SSS Report/Triage DTOs</pre>
+        </div>
+        <div class="code-block">
+          <span class="code-block__label">s3_civica_crm_connector_service (multi-tenant ECS API)</span>
+          <pre>src/main/java/.../civica/crm/
+&#9500;&#9472; controllers/CrmController.java   # POST /crm, GET /crm/healthz
+&#9500;&#9472; services/
+&#9474;   &#9500;&#9472; MainService.java             # tenant resolution + api-key auth
+&#9474;   &#9492;&#9472; CrmService.java              # JOLT transform, NAR lookup, CRM/checklist/attachments
+&#9500;&#9472; async/CrmAsyncProcessor.java     # @Async request handling
+&#9500;&#9472; managers/         AuthorityManager, ConfigManager (60-min tenant cache), DynamoManager
+&#9500;&#9472; helpers/          JoltHelper (Chainr), AwsS3Helper, ParquetHelper (unused NAR path)
+&#9492;&#9472; models/           AuthorityCrm, AuthorityCheckLists, S3Report, ClientConfigTemp</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <p class="project-copy">
+          Neither service hardcodes a tenant. The scheduled task is parameterised per
+          deployment (one stack per client); the CRM connector resolves everything at
+          request time from S3.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Service</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>S3_CRM_API</code> / <code>S3_CRM_API_KEY</code></td><td>Scheduled task</td><td>The CRM connector's tenant-scoped URL and shared API key</td></tr>
+              <tr><td><code>S3_SECRETS_API</code></td><td>Both</td><td>Portal API for fetching per-tenant secret values, keyed by tenant code</td></tr>
+              <tr><td><code>S3_TENANT_CODE_API</code></td><td>CRM connector</td><td>Resolves a tenant name (from the hostname) to its numeric tenant code</td></tr>
+              <tr><td><code>AWS_SG_BUCKET_NAME</code></td><td>Both</td><td>S3 bucket holding tenant configs, secrets, JOLT specs, and run bookmarks</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Both</td><td>Completed-event webhook endpoint and API key</td></tr>
+              <tr><td><code>AWS_ACCESS_KEY_INTEGRATION</code> / <code>AWS_SECRET_KEY_INTEGRATION</code></td><td>Both</td><td>Falls back to the default AWS credential chain when blank</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>The two services never call each other directly; a shared DynamoDB table, written by one and read by the other via <code>target_id</code>, is the only integration point between them.</li>
+          <li>The CRM connector is genuinely multi-tenant: it was built once for one council's Snap Send Solve traffic but resolves tenant, config, and secrets entirely from the request's hostname, so any tenant's inbound integration can reuse it.</li>
+          <li>Requestor matching reuses this developer's phone-suffix matching technique from other Civica Authority integrations, comparing the last 9 digits rather than a full formatted number.</li>
+          <li>The scheduled task's four stages run sequentially with a fixed pause between each (task, CRM, retry, report) rather than in parallel, while the items inside each stage are still processed concurrently.</li>
+          <li>A NAR lookup path backed by a Parquet data store on S3 exists in the codebase but is fully commented out; the live path queries Authority's Name Register directly instead.</li>
+          <li>Failed DynamoDB entries are retried up to 3 times with a 3-minute cool-down, and the retrier itself decides whether a failure was a task-sync or CRM-sync failure by pattern-matching the stored <code>source_id</code>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
