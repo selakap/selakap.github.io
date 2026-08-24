@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Civica Authority &harr; Assetic Work Requests &amp; Work Orders Integration — Selaka Piumal</title>
+  <title>Civica Authority &harr; Assetic Work Requests &amp; Work Orders Integration | Selaka Piumal</title>
   <meta name="description" content="Case study: a serverless AWS Lambda integration that keeps Civica Authority CRM tasks in sync with Assetic Work Requests and Work Orders, on a 5-minute EventBridge schedule with DynamoDB-backed idempotency and retries.">
   <link rel="stylesheet" href="../style.css">
 </head>
@@ -26,7 +26,7 @@
         <p class="project-hero__subtitle">
           A serverless AWS Lambda integration that keeps <strong>Civica Authority</strong>
           (CRM / customer request management) and <strong>Assetic</strong> (asset &amp; works
-          management) in sync for a council or utility tenant &mdash; new CRM tasks
+          management) in sync for a council or utility tenant: new CRM tasks
           automatically become Assetic Work Requests, and Work Request/Work Order
           lifecycle events in Assetic flow back as CRM task updates, with DynamoDB-backed
           idempotency and automatic retries on every 5-minute run.
@@ -52,15 +52,15 @@
           becomes a CRM task, and <strong>Assetic</strong>, where the actual inspection
           or repair is scheduled and tracked as a Work Request or Work Order. Someone
           has to notice a new investigation task, manually raise the matching Work
-          Request, then chase Assetic for status &mdash; inspector assigned, rejected,
-          completed &mdash; and manually reflect that back onto the CRM task so the
+          Request, then chase Assetic for status (inspector assigned, rejected,
+          completed) and manually reflect that back onto the CRM task so the
           resident's request shows accurate progress.
         </p>
         <p class="project-copy">
           Neither system exposes a webhook the other can lean on, so this integration
           runs as a scheduled poller instead of an event listener: every five minutes
           it checks both systems for anything new since the last run, in both
-          directions, and reconciles the difference &mdash; while making sure a
+          directions, and reconciles the difference, while making sure a
           transient failure on either side never means the request has to start over.
         </p>
       </div>
@@ -71,7 +71,7 @@
         <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
         <p class="project-copy">
           A single Lambda invocation, fired by EventBridge every five minutes, runs
-          four stages <strong>sequentially</strong> &mdash; each stage finishes before the
+          four stages <strong>sequentially</strong>, each stage finishes before the
           next starts, but the items inside a stage are farmed out to a 100-thread
           pool and processed concurrently.
         </p>
@@ -87,21 +87,21 @@
             <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Assetic &rarr; Authority: Work Requests</h4>
-              <p><code>AsseticMainWRsProcessor</code> polls Work Requests modified since the last run, keeps only the ones whose <code>ExternalIdentifier</code> matches the Authority account pattern, and independently checks three conditions per Work Request &mdash; inspector assigned, status rejected/cancelled, new supporting info &mdash; opening or closing the matching <code>ASS*</code> Authority task for whichever apply.</p>
+              <p><code>AsseticMainWRsProcessor</code> polls Work Requests modified since the last run, keeps only the ones whose <code>ExternalIdentifier</code> matches the Authority account pattern, and independently checks three conditions per Work Request (inspector assigned, status rejected/cancelled, new supporting info), opening or closing the matching <code>ASS*</code> Authority task for whichever apply.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Assetic &rarr; Authority: Work Orders</h4>
-              <p><code>AsseticMainWOsProcessor</code> polls Work Orders modified since the last run and evaluates four conditions per order &mdash; created, in-progress, completed, new supporting info &mdash; opening the "works approved" and "assigned to a team" tasks, closing the original investigate task on completion, and adding notes for anything else.</p>
+              <p><code>AsseticMainWOsProcessor</code> polls Work Orders modified since the last run and evaluates four conditions per order (created, in-progress, completed, new supporting info), opening the "works approved" and "assigned to a team" tasks, closing the original investigate task on completion, and adding notes for anything else.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">4</span></div>
             <div class="process__content">
               <h4>Retry</h4>
-              <p><code>RetrierProcessor</code> runs last: it re-uploads attachments for recently-succeeded Work Requests in case the original upload failed, then scans DynamoDB for entries stuck in <code>received</code>/<code>failed*</code> for more than 3 minutes with fewer than 4 retries, and re-dispatches each back through the processor matching its source id &mdash; anything still failing after 4 attempts is left for manual investigation.</p>
+              <p><code>RetrierProcessor</code> runs last: it re-uploads attachments for recently-succeeded Work Requests in case the original upload failed, then scans DynamoDB for entries stuck in <code>received</code>/<code>failed*</code> for more than 3 minutes with fewer than 4 retries, and re-dispatches each back through the processor matching its source id; anything still failing after 4 attempts is left for manual investigation.</p>
             </div>
           </div>
         </div>
@@ -163,15 +163,15 @@
           There's no persistent server component: EventBridge fires the container-image
           Lambda, it authenticates against Authority once per invocation and reuses that
           token across all four stages, and everything each stage needs to decide what's
-          "new" &mdash; per-tenant category/action-code mappings and per-poll bookmarks
-          &mdash; is read from S3 rather than hardcoded, so the same image serves every
+          "new" (per-tenant category/action-code mappings and per-poll bookmarks)
+          is read from S3 rather than hardcoded, so the same image serves every
           tenant.
         </p>
         <p class="project-copy">
           DynamoDB (<code>integrationrecords</code>) is the only durable state: every
           processed item gets a row keyed by direction (<code>tenant_integrations_id</code>)
           and source id, recording status, retry count, and the downstream id it
-          produced &mdash; so an already-succeeded item is never reprocessed, and a
+          produced, so an already-succeeded item is never reprocessed, and a
           failed one resumes instead of duplicating work.
         </p>
       </div>
@@ -183,11 +183,11 @@
         <p class="project-copy">
           The diagrams above show the topology; this integration runs both ways inside
           the same 5-minute invocation, so here are both directions ordered in time
-          &mdash; the shared OAuth2 token, the DynamoDB idempotency check on each side,
+          the shared OAuth2 token, the DynamoDB idempotency check on each side,
           and the completed-event webhook that fires whether a step succeeds or fails.
         </p>
 
-        <h3 style="margin: 8px 0 16px; font-size:1.1rem;">Stage 1 &mdash; Authority &rarr; Assetic (<code>ACTN</code> investigate task)</h3>
+        <h3 style="margin: 8px 0 16px; font-size:1.1rem;">Stage 1: Authority &rarr; Assetic (<code>ACTN</code> investigate task)</h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 980 650" role="img" aria-label="Sequence diagram of the Authority to Assetic sync flow" class="sequence-diagram__svg">
             <defs>
@@ -238,7 +238,7 @@
             <text x="306" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">task list</text>
 
             <line x1="242" y1="310" x2="626" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
-            <text x="434" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id) &mdash; skip if already succeeded</text>
+            <text x="434" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id): skip if already succeeded</text>
 
             <line x1="242" y1="350" x2="370" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAsArrow)"></line>
             <text x="306" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET linked name / property / GPS</text>
@@ -263,7 +263,7 @@
           lifetime; dashed arrows are responses, solid arrows are requests.
         </p>
 
-        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">Stage 2 &mdash; Assetic &rarr; Authority (Work Request: inspector assigned)</h3>
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">Stage 2: Assetic &rarr; Authority (Work Request: inspector assigned)</h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 850 500" role="img" aria-label="Sequence diagram of the Assetic to Authority sync flow" class="sequence-diagram__svg">
             <defs>
@@ -303,7 +303,7 @@
             <text x="242" y="143" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">work request list (filtered by ExternalIdentifier)</text>
 
             <line x1="114" y1="190" x2="498" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
-            <text x="306" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id=wrInspect{account}) &mdash; already processed?</text>
+            <text x="306" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id=wrInspect{account}): already processed?</text>
 
             <line x1="114" y1="230" x2="626" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqAs2Arrow)"></line>
             <text x="370" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET existing ASS2 task for account</text>
@@ -325,8 +325,8 @@
         </div>
         <p class="project-copy" style="margin-top:-12px;">
           <code>AsseticWRProcessor</code> actually checks three conditions per Work
-          Request independently &mdash; inspector assigned (shown above), rejected/cancelled,
-          and new supporting info &mdash; so more than one can fire for the same item.
+          Request independently: inspector assigned (shown above), rejected/cancelled,
+          and new supporting info, so more than one can fire for the same item.
           Stage 3 (Work Orders) and the retry stage follow this identical
           poll&nbsp;&rarr;&nbsp;check DynamoDB&nbsp;&rarr;&nbsp;act on Authority&nbsp;&rarr;&nbsp;record&nbsp;&rarr;&nbsp;webhook
           shape as well.
@@ -387,7 +387,7 @@
         </div>
         <p class="project-copy">
           DynamoDB's <code>integrationrecords</code> table is purely for idempotency and
-          retry bookkeeping &mdash; one row per processed item, partitioned by direction
+          retry bookkeeping, one row per processed item, partitioned by direction
           (<code>tenant_integrations_id</code>) and sorted by <code>source_id</code>,
           which encodes enough context to route a retry back to the right processor
           (e.g. <code>wrInspect{account}</code>, <code>woNew{account}</code>). Every
@@ -434,7 +434,7 @@
           Interface Client. <code>cloudformations/cloudformation.yml</code> provisions the
           image-based Lambda, an execution role scoped to
           <code>TenantConfigurations/*</code> in S3 plus DynamoDB and VPC/log permissions,
-          a security group, and the 5-minute EventBridge rule &mdash; separate stacks for
+          a security group, and the 5-minute EventBridge rule, separate stacks for
           <code>develop</code> and <code>production</code>, both driven by Bitbucket
           Pipelines variables. A dedicated <code>run-sonar-scan-quality-gw</code> pipeline
           runs the SonarCloud gate ahead of every build.
@@ -446,7 +446,7 @@
           <code>sam local invoke</code> (or <code>sam local start-api</code>, which exposes
           the same handler behind a local <code>POST /crm</code> route) triggers a real
           run against whichever Authority/Assetic/AWS endpoints are configured in
-          <code>template.yaml</code> &mdash; there's no mock layer, so local runs are pointed
+          <code>template.yaml</code>: there's no mock layer, so local runs are pointed
           at sandbox tenants rather than production.
         </p>
       </div>
@@ -468,7 +468,7 @@
 &#9500;&#9472; operators/    HttpOperator (java.net.http), DynamoOperator &amp; S3Operator (AWS SDK v2)
 &#9500;&#9472; models/       Jackson request/response DTOs for the Authority &amp; Assetic REST APIs
 &#9500;&#9472; data/         Plain data-holder classes passed between layers
-&#9492;&#9472; constants/    TenantConstants &mdash; endpoints, env var keys, status/task codes
+&#9492;&#9472; constants/    TenantConstants: endpoints, env var keys, status/task codes
 
 cloudformations/cloudformation.yml   # production infrastructure
 template.yaml                         # local/dev SAM template (adds POST /crm)
@@ -481,7 +481,7 @@ bitbucket-pipelines.yml               # develop, production &amp; SonarCloud pip
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
         <p class="project-copy">
-          Everything is supplied via Lambda environment variables &mdash; no per-tenant
+          Everything is supplied via Lambda environment variables: no per-tenant
           values are hardcoded, so onboarding a new council is a config and credentials
           change, not a code change.
         </p>
@@ -509,11 +509,11 @@ bitbucket-pipelines.yml               # develop, production &amp; SonarCloud pip
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
         <ul class="timeline__bullets project-copy">
-          <li>Fully scheduled, not event-driven &mdash; a single EventBridge rule fires the Lambda every 5 minutes, and each of the 4 stages polls for changes since its own last-run bookmark on S3.</li>
+          <li>Fully scheduled, not event-driven: a single EventBridge rule fires the Lambda every 5 minutes, and each of the 4 stages polls for changes since its own last-run bookmark on S3.</li>
           <li>Within a stage, individual tasks/Work Requests/Work Orders are processed concurrently across a 100-thread pool, even though the 4 stages themselves run one after another.</li>
-          <li>A Work Request or Work Order can trigger more than one Authority task per poll &mdash; each condition (inspector assigned, rejected, in-progress, completed, new note) is checked independently rather than as a single state machine.</li>
+          <li>A Work Request or Work Order can trigger more than one Authority task per poll: each condition (inspector assigned, rejected, in-progress, completed, new note) is checked independently rather than as a single state machine.</li>
           <li>DynamoDB tracks up to 4 retries per item, with a 3-minute cool-down before a <code>received</code>/<code>failed</code> entry is retried, so an attempt still in flight isn't raced by the next run.</li>
-          <li>Ships as a container-image Lambda, so local testing runs through AWS SAM/Docker against real sandbox Authority and Assetic endpoints &mdash; there's no mock/stub layer.</li>
+          <li>Ships as a container-image Lambda, so local testing runs through AWS SAM/Docker against real sandbox Authority and Assetic endpoints; there's no mock/stub layer.</li>
         </ul>
       </div>
     </section>

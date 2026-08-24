@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PaaS Self-Service Deployment Console — Selaka Piumal</title>
+  <title>PaaS Self-Service Deployment Console | Selaka Piumal</title>
   <meta name="description" content="Case study: a self-service internal developer platform that turns a reviewed git commit into a running AWS Lambda service.">
   <link rel="stylesheet" href="../style.css">
 </head>
@@ -25,9 +25,9 @@
         <h1 class="project-hero__title">PaaS Self-Service Deployment Console</h1>
         <p class="project-hero__subtitle">
           A self-service internal developer platform that takes a reviewed git commit
-          and turns it into a running AWS Lambda service &mdash; complete with automated
+          and turns it into a running AWS Lambda service (complete with automated
           code-quality gating, human approval, containerised builds, and one-click
-          deployment &mdash; without anyone touching the AWS console by hand.
+          deployment) without anyone touching the AWS console by hand.
         </p>
         <ul class="tag-list">
           <li>React</li><li>Vite</li><li>FastAPI</li><li>Python</li>
@@ -64,14 +64,14 @@
           Turning a reviewed commit into a running cloud service usually means manually
           building a Docker image, pushing it to a container registry, and hand-writing
           infrastructure-as-code for a Lambda function, its trigger (a schedule or an HTTP
-          endpoint), and its permissions &mdash; slow, repetitive, and easy to get wrong. There's
+          endpoint), and its permissions: slow, repetitive, and easy to get wrong. There's
           also no consistent gate to stop unreviewed or low-quality code from reaching
           production.
         </p>
         <p class="project-copy">
           This proof-of-concept collapses that entire path into a single console: submit a
           commit, get it approved against an automated quality scan, build it, and deploy it
-          &mdash; as either a scheduled job or a public API &mdash; in a few clicks.
+          as either a scheduled job or a public API, in a few clicks.
         </p>
       </div>
     </section>
@@ -105,14 +105,14 @@
             <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Deploy</h4>
-              <p>The built image becomes a live AWS Lambda function &mdash; either on a repeating schedule via EventBridge (Cron), or reachable as an HTTP endpoint via API Gateway &mdash; provisioned automatically with AWS CDK.</p>
+              <p>The built image becomes a live AWS Lambda function, either on a repeating schedule via EventBridge (Cron), or reachable as an HTTP endpoint via API Gateway, provisioned automatically with AWS CDK.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">5</span></div>
             <div class="process__content">
               <h4>Done</h4>
-              <p>The result of every step &mdash; success or error &mdash; is shown directly on the page, no CLI or AWS console required.</p>
+              <p>The result of every step (success or error) is shown directly on the page, no CLI or AWS console required.</p>
             </div>
           </div>
         </div>
@@ -138,7 +138,7 @@
           library, talking to a local FastAPI backend over REST. The backend owns three
           flows: cloning &amp; building a repo into a Lambda-compatible container image,
           deploying that image behind a scheduled EventBridge trigger, and deploying it
-          behind an API Gateway HTTP endpoint &mdash; both provisioned through AWS CDK.
+          behind an API Gateway HTTP endpoint, both provisioned through AWS CDK.
         </p>
       </div>
     </section>
@@ -165,7 +165,7 @@
             </div>
             <div class="mockup__field">
               <label>Commit</label>
-              <div class="mockup__input">79dedf7 &mdash; some changes to the app</div>
+              <div class="mockup__input">79dedf7: some changes to the app</div>
             </div>
             <span class="mockup__button">Submit for Approval</span>
           </div>
@@ -181,7 +181,7 @@
             </div>
             <div class="mockup__field">
               <label>Commit</label>
-              <div class="mockup__input">79dedf7 &mdash; some changes to the app</div>
+              <div class="mockup__input">79dedf7: some changes to the app</div>
             </div>
             <span class="mockup__badge mockup__badge--success">Approved</span>
             <div class="mockup__field" style="margin-top:14px;">
@@ -237,8 +237,8 @@
           intentionally out of scope for now:
         </p>
         <ul class="timeline__bullets project-copy">
-          <li>No login or user-account system &mdash; anyone with the URL can use it.</li>
-          <li>No persistence &mdash; refreshing the browser clears any in-progress form.</li>
+          <li>No login or user-account system: anyone with the URL can use it.</li>
+          <li>No persistence: refreshing the browser clears any in-progress form.</li>
           <li>The Review Queue doesn't auto-refresh; a manual refresh shows the latest status.</li>
         </ul>
       </div>

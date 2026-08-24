@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authority NAR Contact Resolution API — Selaka Piumal</title>
+  <title>Authority NAR Contact Resolution API | Selaka Piumal</title>
   <meta name="description" content="Case study: a Spring Boot integration service that resolves phone numbers into Civica Authority contact records and aggregates a resident's CRM, rates, and property history into one 360° view.">
   <link rel="stylesheet" href="../style.css">
 </head>
@@ -26,7 +26,7 @@
         <p class="project-hero__subtitle">
           A Spring Boot integration service that resolves a caller's phone number into
           Civica Authority contact records in real time, and aggregates a resident's CRM
-          history, rates, and property/GIS records into a single 360&deg; view &mdash; a
+          history, rates, and property/GIS records into a single 360&deg; view, a
           proof-of-concept built for council contact-centre and customer-service teams.
         </p>
         <ul class="tag-list">
@@ -48,7 +48,7 @@
           usually has is a phone number. Turning that into a resident's identity and
           full history inside Civica Authority means manually searching the Name
           Register, then separately opening CRM enquiry history, rates and property
-          records, and GIS documents &mdash; across several screens and logins. There's no
+          records, and GIS documents, across several screens and logins. There's no
           single phone-first entry point into Authority's data, and no consistent audit
           trail proving a lookup happened and what it returned.
         </p>
@@ -90,14 +90,14 @@
             <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Dashboard Render</h4>
-              <p>Results are pushed into a server-rendered Thymeleaf dashboard showing the resident's name, address, and NAR ID up top, with tabbed CRM and Rates tables below &mdash; each row deep-linking straight back into Authority's own CRM enquiry and GIS screens.</p>
+              <p>Results are pushed into a server-rendered Thymeleaf dashboard showing the resident's name, address, and NAR ID up top, with tabbed CRM and Rates tables below, each row deep-linking straight back into Authority's own CRM enquiry and GIS screens.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">5</span></div>
             <div class="process__content">
               <h4>Audit Trail</h4>
-              <p>Whether a lookup succeeds or fails, an async event service posts a signed integration-completed event &mdash; tenant, integration ID, status, response code &mdash; to a central audit endpoint, so every phone lookup and every 360&deg; view is independently traceable.</p>
+              <p>Whether a lookup succeeds or fails, an async event service posts a signed integration-completed event (tenant, integration ID, status, response code) to a central audit endpoint, so every phone lookup and every 360&deg; view is independently traceable.</p>
             </div>
           </div>
         </div>
@@ -122,8 +122,8 @@
           Requests flow through four clean layers: controllers accept and validate the
           HTTP request, <code>NarService</code> orchestrates the use case, <code>AuthorityHelper</code>
           maps Authority's OData responses into the API's own domain model, and
-          <code>AuthorityManager</code> owns every outbound call &mdash; token generation and all
-          REST/OData requests &mdash; through a shared <code>HttpHelper</code> that centralises
+          <code>AuthorityManager</code> owns every outbound call (token generation and all
+          REST/OData requests) through a shared <code>HttpHelper</code> that centralises
           logging, timeouts, and error handling. Every request carries a short tracking
           ID that's threaded through every log line for end-to-end traceability.
         </p>
@@ -146,7 +146,7 @@
           The 360&deg; view is the most involved flow: CRM history is paged through in
           batches of 100 until Authority stops returning full pages, each rate-payer
           record is resolved down to its parcel, and each parcel triggers two more
-          calls &mdash; a GIS integration request followed by a signed URL lookup &mdash; to
+          calls (a GIS integration request followed by a signed URL lookup) to
           produce direct links to the parcel map and the assessment map. All of it is
           assembled and rendered before the dashboard is returned.
         </p>
@@ -158,12 +158,12 @@
         <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
         <p class="project-copy">
           The diagrams above show the layers and the fan-out; these show the same
-          two flows ordered in time &mdash; every outbound call, the OAuth2 token
+          two flows ordered in time: every outbound call, the OAuth2 token
           exchange, and the audit event that fires whether the lookup succeeds
           or fails.
         </p>
 
-        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Phone Search &mdash; <code>GET /api/contact/search</code></h3>
+        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Phone Search: <code>GET /api/contact/search</code></h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 1136 480" role="img" aria-label="Sequence diagram of the phone search flow" class="sequence-diagram__svg">
             <defs>
@@ -209,7 +209,7 @@
           </svg>
         </div>
 
-        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">360&deg; View &mdash; <code>GET /contact/360view</code></h3>
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">360&deg; View: <code>GET /contact/360view</code></h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 1108 770" role="img" aria-label="Sequence diagram of the 360 degree view flow" class="sequence-diagram__svg">
             <defs>
@@ -276,7 +276,7 @@
         </div>
         <p class="project-copy" style="margin-top:-12px;">
           Both flows reuse the same OAuth2 token for every downstream Authority
-          call within a request &mdash; it's generated once and threaded through
+          call within a request; it's generated once and threaded through
           <code>IntegrationData</code>, not refetched per call. The dashed boxes
           mark the two points where the service loops: paging through CRM
           history 100 rows at a time, and resolving each rate-payer down to its
@@ -306,15 +306,15 @@
           app with a multi-stage Maven &rarr; Alpine-JRE Dockerfile, tags the image with a
           build timestamp, pushes it to Amazon ECR, and runs
           <code>aws cloudformation deploy</code> against a template that provisions (or
-          updates) an ECS Fargate service &mdash; 256 CPU units, 512&nbsp;MB memory, one task,
-          no public IP &mdash; sitting behind an existing shared Application Load Balancer.
+          updates) an ECS Fargate service (256 CPU units, 512&nbsp;MB memory, one task,
+          no public IP) sitting behind an existing shared Application Load Balancer.
           A listener rule routes <code>/contact/*</code> and <code>/api/contact/*</code> to the
           service's target group, with health checks every 30 seconds (2 healthy / 3
           unhealthy thresholds) and a CloudWatch log group retaining logs for 90 days.
         </p>
         <p class="project-copy">
           Authority credentials, OAuth2 client details, and the audit endpoint URL are
-          injected purely as CloudFormation parameters at deploy time &mdash; nothing is
+          injected purely as CloudFormation parameters at deploy time; nothing is
           hardcoded in the image or the repo.
         </p>
       </div>
@@ -383,7 +383,7 @@
           </div>
         </div>
         <p class="project-copy" style="margin-top:-12px;">
-          Sample data shown above is illustrative &mdash; the real dashboard renders live
+          Sample data shown above is illustrative; the real dashboard renders live
           Authority records and requires an authenticated session.
         </p>
       </div>
@@ -397,9 +397,9 @@
           intentionally out of scope for now:
         </p>
         <ul class="timeline__bullets project-copy">
-          <li>Authentication is a single shared HTTP Basic credential &mdash; there's no per-operator identity or role-based access yet.</li>
+          <li>Authentication is a single shared HTTP Basic credential: there's no per-operator identity or role-based access yet.</li>
           <li>Built for a single Civica Authority tenant; multi-tenant routing isn't implemented.</li>
-          <li>No caching layer &mdash; every phone search and 360&deg; view re-queries Authority live, including the OAuth2 token exchange.</li>
+          <li>No caching layer: every phone search and 360&deg; view re-queries Authority live, including the OAuth2 token exchange.</li>
           <li>Verified manually against a UAT Authority instance; no automated integration test suite yet.</li>
         </ul>
       </div>

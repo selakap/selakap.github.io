@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microsoft Dynamics 365 &harr; Mailchimp Marketing List Sync | Selaka Piumal</title>
+  <meta name="description" content="Case study: a daily AWS Lambda integration that keeps Mailchimp audiences in sync with Microsoft Dynamics 365 marketing lists, diffing membership and reconciling create/update/delete for every list, with Dynamics as the source of truth.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Microsoft Dynamics 365 &harr; Mailchimp Marketing List Sync</h1>
+        <p class="project-hero__subtitle">
+          A daily AWS Lambda integration built for Paintback that keeps every Mailchimp
+          audience in lock-step with its matching <strong>Microsoft Dynamics 365</strong>
+          marketing list, treating <strong>Dynamics as the single source of truth</strong>
+          and reconciling each list's Mailchimp membership against it: new contacts created,
+          changed contacts updated, and removed contacts unsubscribed, automatically.
+        </p>
+        <ul class="tag-list">
+          <li>Microsoft Dynamics 365</li><li>Dynamics Web API v9.2</li><li>OAuth2</li>
+          <li>Mailchimp API v3</li><li>Java 17</li><li>AWS Lambda</li><li>Docker</li>
+          <li>Amazon EventBridge</li><li>CloudFormation</li><li>Bitbucket Pipelines</li>
+          <li>SonarCloud</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Paintback manages its customers, prospects, and segmentation entirely inside
+          <strong>Microsoft Dynamics 365</strong> as marketing lists, but the actual email
+          campaigns go out through <strong>Mailchimp</strong>, which has no visibility into
+          Dynamics at all. Left alone, the two drift apart immediately: someone gets added to a
+          Dynamics marketing list and never receives a single campaign; someone unsubscribes or
+          is removed in Dynamics and keeps getting emailed anyway; a contact updates their name
+          or phone number in the CRM and Mailchimp silently goes stale.
+        </p>
+        <p class="project-copy">
+          Rather than trying to catch every change in Dynamics as it happens, this integration
+          takes the simpler, more reliable route: once a day, for every active marketing list, it
+          asks "who is in this list in Dynamics right now?", compares that against "who is
+          actually a Mailchimp subscriber for the matching audience right now?", and reconciles
+          the difference: no separate state store, no drift that can silently compound
+          over time.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <p class="project-copy">
+          One Lambda invocation, fired by EventBridge once a day, authenticates to Dynamics
+          <strong>once</strong> and reuses that token for every list; the lists themselves are
+          processed concurrently, and within each list every create/update/delete is fanned out
+          across its own 100-thread pool.
+        </p>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Authenticate &amp; Discover</h4>
+              <p>The handler authenticates to Dynamics via OAuth2 (Resource Owner Password Credentials), fetches every active marketing list (<code>statecode eq 0</code>) from <code>/api/data/v9.2/lists</code>, and fetches every Mailchimp audience the account has, paginating both in batches of 1000.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Match List to Audience</h4>
+              <p>For each Dynamics marketing list, <code>DynamicsToMailchimpProcessor</code> looks for a Mailchimp audience with the exact same name. No match, no sync: the list is skipped rather than guessed at, so onboarding a new list is just naming the Mailchimp audience to match.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Fetch Both Sides</h4>
+              <p><code>listmembers</code> gives the set of Dynamics contact ids currently on the list; those ids are then batched into an OData <code>contactid eq &hellip; or &hellip;</code> filter against <code>/contacts</code> to pull name, phone, and email in one query. In parallel, every existing member of the matching Mailchimp audience is fetched via the Mailchimp API.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Diff by Email</h4>
+              <p>Both sides are reduced to a set keyed by email address. Anyone in Dynamics but not Mailchimp is queued to <strong>create</strong>; anyone in both whose name or phone differs is queued to <strong>update</strong>; anyone in Mailchimp but no longer in the Dynamics list is queued to <strong>delete</strong>.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Reconcile Mailchimp</h4>
+              <p><code>ContactProcessor</code> executes each action: <strong>create</strong> POSTs a new subscribed member with merge fields for first name, last name, and phone; <strong>delete</strong> removes a member by the MD5 hash of their lower-cased email (Mailchimp's addressing scheme); <strong>update</strong> is implemented as a delete immediately followed by a create, keeping the write path to a single well-tested code path instead of a separate PATCH flow.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">6</span></div>
+            <div class="process__content">
+              <h4>Report</h4>
+              <p>Every create/update/delete outcome, success or failure, fires an <code>IntegrationCompletedEvent</code> to Symphony3's central integration-notifier webhook, with the contact's email masked before it's logged or reported.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge Rule<br><small>daily</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>container image, in-VPC</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">DynamicsToMailchimpHandler<br><small>per-list fan-out</small></div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Per Marketing List</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--dynamics" aria-hidden="true">D365</span>
+              <div class="arch-box__label">Microsoft Dynamics 365<br><small>lists, listmembers, contacts</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--email" aria-hidden="true">MC</span>
+              <div class="arch-box__label">Mailchimp<br><small>audiences &amp; members, API key auth</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook<br><small>external monitoring</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          There's no database in this integration: no DynamoDB idempotency table, no S3
+          bookmark. Because every run recomputes the full desired state (Dynamics list
+          membership) against the full actual state (Mailchimp audience membership) and only acts
+          on the difference, re-running the same day twice is safe: anything already reconciled
+          simply produces an empty diff.
+        </p>
+        <p class="project-copy">
+          Dynamics 365 is authoritative for <em>who should be on the list and what their details
+          are</em>; Mailchimp is treated purely as a delivery mechanism that gets brought into
+          agreement with it, never the other way around: a change made directly in
+          Mailchimp is overwritten on the next run rather than flowing back to Dynamics.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Reconciliation Logic</h2>
+        <p class="project-copy">
+          Once both sides of a list are reduced to an <code>email &rarr; contact</code> map, three
+          independent passes decide what happens to each address:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Condition</th><th>Action</th><th>Mailchimp Call</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Email in Dynamics list, not in Mailchimp audience</td><td>Create</td><td><code>POST /lists/{id}/members</code> (status <code>subscribed</code>)</td></tr>
+              <tr><td>Email in both, but name or phone differs</td><td>Update</td><td><code>DELETE</code> the existing member by email-hash, then re-<code>POST</code></td></tr>
+              <tr><td>Email in Mailchimp audience, no longer in Dynamics list</td><td>Delete</td><td><code>DELETE /lists/{id}/members/{md5(email)}</code></td></tr>
+              <tr><td>Email in both, all fields identical</td><td>No-op</td><td>n/a</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          A contact's email is resolved as <code>email1</code>, falling back to <code>email2</code>
+          if the primary is blank; phone is resolved from mobile &rarr; telephone1 &rarr; telephone2
+          &rarr; telephone3, first non-empty value wins. Member identity on the Mailchimp side is
+          always the MD5 hash of the lower-cased email address, per Mailchimp's own addressing
+          scheme for the members endpoint.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Design Pattern: Event Reporting</h2>
+        <p class="project-copy">
+          Every outcome (a Dynamics fetch failing, a Mailchimp create/update/delete
+          succeeding or failing) is reported the same way, through a small
+          factory/strategy pair rather than instantiating the event manager directly wherever
+          it's needed:
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">event reporting</span>
+          <pre>EventTaskFactory (interface)
+&#9492;&#9472; IntegrationCompletedEventTaskFactory
+    &#9492;&#9472; create(data, trackId) -&gt; new IntegrationCompletedEventManager(data, trackId)
+
+EventManager(taskFactory)
+&#9492;&#9472; handleEvent(data, trackId)
+    &#9492;&#9472; runs taskFactory.create(...) on a single-thread executor and blocks for it to finish</pre>
+        </div>
+        <p class="project-copy">
+          The indirection means every call site (token failures, list-fetch failures,
+          contact create/update/delete outcomes) goes through
+          <code>new EventManager(new IntegrationCompletedEventTaskFactory()).handleEvent(...)</code>
+          rather than duplicating thread-management code, and a second event type (say, a
+          different webhook for a different tenant) would only mean adding a new factory.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>develop &amp; production</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>mvn verify + quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>Docker image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda, role, VPC, EventBridge rule</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>mvn clean package</code> (Maven Shade) builds a fat jar around the AWS Lambda
+          Java Runtime Interface Client; the <code>Dockerfile</code> packages it as a container
+          image. <code>cloudformations/cloudformation.yml</code> provisions the image-based
+          Lambda inside Paintback's VPC on a private subnet with its own security group and an
+          EventBridge rule on a <code>cron(0 12 * * ? *)</code> schedule, with separate stacks
+          and separate Dynamics 365 environments (UAT vs production org) for
+          <code>develop</code> and <code>production</code>. A dedicated
+          <code>run-sonar-scan-quality-gw</code> pipeline runs <code>mvn clean verify</code> and a
+          SonarCloud analysis ahead of every merge.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/main/java/org/symphony3/smartglue/integration/paintback/dynamics_to_mailchimp/
+&#9500;&#9472; handlers/     DynamicsToMailchimpHandler     # Lambda entry point: auth, discovery, per-list fan-out
+&#9500;&#9472; processors/   DynamicsToMailchimpProcessor   # per-list: match audience, fetch both sides, diff
+&#9474;               ContactProcessor               # per-contact: create / update (delete+create) / delete
+&#9500;&#9472; managers/     DynamicsManager, MailChimpManager, EventManager, IntegrationCompletedEventManager
+&#9500;&#9472; factory/      EventTaskFactory (interface), IntegrationCompletedEventTaskFactory
+&#9500;&#9472; operators/    HttpOperator (java.net.http)
+&#9500;&#9472; models/       Jackson request/response DTOs for the Dynamics &amp; Mailchimp REST APIs
+&#9500;&#9472; data/         MailChimpContactData, MailChimpAudienceData, HttpRsponseData,
+&#9474;               IntegrationCompletedEventData: plain data-holders passed between layers
+&#9492;&#9472; constants/    PaintbackConstants: endpoints &amp; env var keys
+
+cloudformations/cloudformation.yml   # production infrastructure (VPC-bound Lambda, daily schedule)
+template.yaml                         # local/dev SAM template (adds POST /marketingList)
+bitbucket-pipelines.yml               # develop, production &amp; SonarCloud pipelines</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <p class="project-copy">
+          Everything, both the Dynamics side and the Mailchimp side, is supplied via
+          Lambda environment variables, with no tenant-specific values hardcoded:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>DYNAMICS_RESOURCE_PAINTBACK</code> / <code>DYNAMICS_HOST</code></td><td>Dynamics 365 org URL used for the OAuth2 <code>resource</code> and Web API base URL</td></tr>
+              <tr><td><code>DYNAMICS_CLIENT_ID_PAINTBACK</code> / <code>DYNAMICS_CLIENT_SECRET_PAINTBACK</code></td><td>Azure AD app registration credentials for the OAuth2 client</td></tr>
+              <tr><td><code>DYNAMICS_USER_PAINTBACK</code> / <code>DYNAMICS_USER_PASS_PAINTBACK</code></td><td>Dedicated Dynamics API user for the Resource Owner Password Credentials grant</td></tr>
+              <tr><td><code>MAILCHIMP_HOST</code> / <code>MAILCHIMP_API_KEY</code></td><td>Mailchimp datacenter-scoped API host and API key (sent as the <code>apikey</code> auth scheme)</td></tr>
+              <tr><td><code>TENANT_ID_PAINTBACK</code> / <code>TENANT_INTEGRATION_ID_PAINTBACK</code></td><td>Tenant identifiers stamped on every webhook event</td></tr>
+              <tr><td><code>AWS_ACCESS_KEY_INTEGRATION</code> / <code>AWS_SECRET_KEY_INTEGRATION</code> / <code>AWS_REGION_INTEGRATION</code></td><td>Explicit AWS credentials for the SDK clients used inside the VPC</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Completed-event webhook endpoint and API key for cross-integration monitoring</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>Stateless by design: no DynamoDB idempotency table and no S3 bookmark; every run recomputes the full diff between Dynamics and Mailchimp, so a re-run or a missed day is self-correcting rather than something that needs manual recovery.</li>
+          <li>Dynamics 365 is always the winning side: a change made directly in a Mailchimp audience (a manual unsubscribe, an edited merge field) is overwritten on the next daily run rather than syncing back into Dynamics.</li>
+          <li>A Dynamics marketing list only syncs if a Mailchimp audience with the <strong>exact same name</strong> already exists: lists are matched by name, not by a stored id mapping.</li>
+          <li>"Update" is implemented as delete-then-create rather than a Mailchimp <code>PATCH</code>, trading one extra API call for a single, uniformly-tested write path shared with create.</li>
+          <li>Runs entirely inside Paintback's VPC on a private subnet with no public HTTP endpoint in production: EventBridge invokes the Lambda directly once a day, and the SAM template's <code>POST /marketingList</code> route exists only for local development.</li>
+          <li>Every contact's email is masked before it's logged or sent to the completed-event webhook, so raw addresses don't end up in logs or monitoring payloads.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>

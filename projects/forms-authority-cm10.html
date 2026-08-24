@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authority / CM10 Public Forms Integration — Selaka Piumal</title>
+  <title>Authority / CM10 Public Forms Integration | Selaka Piumal</title>
   <meta name="description" content="Case study: an event-driven integration service that syncs public Drupal form submissions into Civica Authority and Content Manager 10 via Lambda, S3, and ECS Fargate.">
   <link rel="stylesheet" href="../style.css">
 </head>
@@ -27,7 +27,7 @@
           An event-driven integration service that takes public form submissions
           coming out of Drupal and pushes them into <strong>Civica Authority</strong>
           (records/CRM) and <strong>Content Manager 10</strong> (document management)
-          &mdash; keeping attachments and submission state in sync without anyone
+          keeping attachments and submission state in sync without anyone
           re-keying a form by hand.
         </p>
         <ul class="tag-list">
@@ -48,8 +48,8 @@
         <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
         <p class="project-copy">
           Public-facing council forms built in Drupal generate a steady stream of
-          submissions &mdash; rates enquiries, animal registrations, waste requests,
-          each with its own attachments &mdash; that ultimately need to land as a
+          submissions (rates enquiries, animal registrations, waste requests,
+          each with its own attachments) that ultimately need to land as a
           proper record in Civica Authority and, in some cases, as a document in
           Content Manager 10. Doing that by hand doesn't scale, and a synchronous
           call straight from the Drupal site into Authority couples a public,
@@ -59,9 +59,9 @@
         </p>
         <p class="project-copy">
           This service decouples the two. Drupal only ever talks to a small,
-          disposable ingest endpoint; everything after that &mdash; validation,
+          disposable ingest endpoint; everything after that (validation,
           authentication, CRM record creation, attachment upload, document
-          management sync &mdash; happens asynchronously, per tenant, with a
+          management sync) happens asynchronously, per tenant, with a
           webhook reporting the result back once it's done.
         </p>
       </div>
@@ -75,28 +75,28 @@
             <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Form Submission</h4>
-              <p>A public Drupal form posts its submission &mdash; JSON payload plus any attachments &mdash; to an API Gateway endpoint, authenticated with a per-tenant <code>x-api-key</code>.</p>
+              <p>A public Drupal form posts its submission (JSON payload plus any attachments) to an API Gateway endpoint, authenticated with a per-tenant <code>x-api-key</code>.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Ingest &amp; Persist</h4>
-              <p>A lightweight Python Lambda validates the request and writes the submission payload straight to an S3 bucket, then returns immediately &mdash; Drupal never waits on Authority or CM10.</p>
+              <p>A lightweight Python Lambda validates the request and writes the submission payload straight to an S3 bucket, then returns immediately; Drupal never waits on Authority or CM10.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Event Trigger</h4>
-              <p>The S3 object-created event fires an EventBridge rule, which launches a one-shot ECS Fargate task running the Spring Boot integration app &mdash; no server sits idle waiting for work.</p>
+              <p>The S3 object-created event fires an EventBridge rule, which launches a one-shot ECS Fargate task running the Spring Boot integration app; no server sits idle waiting for work.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
             <div class="process__content">
               <h4>Sync to Authority &amp; CM10</h4>
-              <p>The task loads that tenant's config from S3, then checks DynamoDB for an existing record of this submission's source ID &mdash; skipping it if already processed successfully, or resuming from wherever a prior attempt left off. It authenticates against Authority and Content Manager 10, creates the CRM record and its attachments in Authority, and pushes documents into CM10 where required, recording progress in DynamoDB at each stage.</p>
+              <p>The task loads that tenant's config from S3, then checks DynamoDB for an existing record of this submission's source ID, skipping it if already processed successfully, or resuming from wherever a prior attempt left off. It authenticates against Authority and Content Manager 10, creates the CRM record and its attachments in Authority, and pushes documents into CM10 where required, recording progress in DynamoDB at each stage.</p>
             </div>
           </div>
           <div class="process__step">
@@ -169,17 +169,17 @@
           polls, and no compute runs unless there's an actual submission to
           process. Tenant identity flows through the whole chain via
           <code>TENANT_ID</code>, so the same Lambda and the same ECS task image
-          serve every council &mdash; only the config and credentials resolved from
+          serve every council; only the config and credentials resolved from
           S3 differ per tenant.
         </p>
         <p class="project-copy">
           DynamoDB (<code>integrationrecords</code>) is the only durable state in
           the pipeline: before doing any work, the task looks up the submission's
           source ID and skips it if it's already succeeded, or resumes from the
-          last completed stage if a previous attempt failed partway through &mdash;
+          last completed stage if a previous attempt failed partway through,
           up to four retries. The S3 submission payload itself is deleted as soon
-          as the CRM record is created in Authority &mdash; the task doesn't wait
-          for the CM10 and attachment steps to finish &mdash; and the same cleanup
+          as the CRM record is created in Authority (the task doesn't wait
+          for the CM10 and attachment steps to finish), and the same cleanup
           runs on any processing failure too, so the ingest bucket never
           accumulates stale submissions.
         </p>
@@ -191,7 +191,7 @@
         <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
         <p class="project-copy">
           The architecture diagram above shows the topology; this is the same
-          flow ordered in time &mdash; every request, the DynamoDB idempotency
+          flow ordered in time: every request, the DynamoDB idempotency
           check, and exactly when the S3 payload gets deleted.
         </p>
         <div class="sequence-diagram-wrap">
@@ -267,7 +267,7 @@
         </div>
         <p class="project-copy" style="margin-top:-12px;">
           The highlighted band on the ECS Task lifeline is the one-shot
-          container's active lifetime &mdash; from the moment EventBridge starts
+          container's active lifetime, from the moment EventBridge starts
           it to the final webhook call. Dashed arrows are responses; solid
           arrows are requests.
         </p>
@@ -316,7 +316,7 @@
           Python Lambda as Docker images, pushes them to their own ECR
           repositories, and applies the CloudFormation stacks that own the ECS
           task definition, IAM roles, the EventBridge S3 trigger, and the
-          Lambda/API Gateway front door &mdash; separately for UAT and PROD, driven
+          Lambda/API Gateway front door, separately for UAT and PROD, driven
           entirely by pipeline variables rather than anything hardcoded in the
           templates.
         </p>
@@ -342,7 +342,7 @@
 &#9500;&#9472; helpers/              # orchestration per concern: Authority, CM, Secrets, S3, HTTP, DynamoDB
 &#9500;&#9472; managers/             # lower-level API callers used by helpers
 &#9500;&#9472; models/               # request/response DTOs (Drupal, Authority, CM, secrets)
-&#9492;&#9472; services/             # top-level services &mdash; MainService is the entry flow
+&#9492;&#9472; services/             # top-level services: MainService is the entry flow
 
 python-lambda/app.py     # API Gateway &rarr; S3 ingest Lambda
 cloudformations/          # ECS task + ECR + Lambda/API Gateway stacks
@@ -361,7 +361,7 @@ scripts/                  # deploy scripts invoked by bitbucket-pipelines.yml</p
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
         <p class="project-copy">
-          Everything is environment-driven &mdash; no per-tenant values are
+          Everything is environment-driven; no per-tenant values are
           hardcoded, so onboarding a new council is a config and credentials
           change, not a code change.
         </p>
@@ -389,9 +389,9 @@ scripts/                  # deploy scripts invoked by bitbucket-pipelines.yml</p
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
         <ul class="timeline__bullets project-copy">
-          <li>Multi-tenant by design &mdash; the same Lambda and ECS task image serve every council; only <code>TENANT_ID</code> and its S3-backed config differ.</li>
+          <li>Multi-tenant by design: the same Lambda and ECS task image serve every council; only <code>TENANT_ID</code> and its S3-backed config differ.</li>
           <li>The ECS task is intentionally one-shot, not a long-running server, so there's no idle compute cost between submissions.</li>
-          <li>Content Manager 10 sync is optional per submission &mdash; not every form needs a document pushed to CM10, only a CRM record in Authority.</li>
+          <li>Content Manager 10 sync is optional per submission: not every form needs a document pushed to CM10, only a CRM record in Authority.</li>
           <li>DynamoDB tracks up to 4 retries per submission, so a transient Authority/CM10 outage doesn't mean the form has to be resubmitted from scratch.</li>
           <li>UAT and PROD are separate CloudFormation deployments driven by Bitbucket Pipelines variables, with a SonarCloud gate ahead of every build.</li>
         </ul>

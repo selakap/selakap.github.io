@@ -554,6 +554,9 @@ img {
 .arch-icon--devtools { background: #2684FF; }
 .arch-icon--quality { background: #4E2A84; }
 .arch-icon--database { background: #4053D6; }
+.arch-icon--dynamics { background: #0078D4; }
+.arch-icon--telephony { background: #E7157B; }
+.arch-icon--email { background: #E85C41; }
 
 /* ---------- Sequence Diagram ---------- */
 .sequence-diagram-wrap {

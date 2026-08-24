@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AssetVision &harr; OpenSpatial Asset Sync API — Selaka Piumal</title>
+  <title>AssetVision &harr; OpenSpatial Asset Sync API | Selaka Piumal</title>
   <meta name="description" content="Case study: a serverless Spring Boot integration that keeps Civica AssetVision and Munsys OpenSpatial in sync bidirectionally, using a per-tenant JOLT transformation spec as the reusability layer.">
   <link rel="stylesheet" href="../style.css">
 </head>
@@ -26,7 +26,7 @@
         <p class="project-hero__subtitle">
           A serverless Spring Boot integration that keeps Civica AssetVision (enterprise
           asset &amp; financial register) and Munsys OpenSpatial (field GIS/spatial system)
-          in sync bidirectionally &mdash; and does it for many councils at once by keeping
+          in sync bidirectionally, and does it for many councils at once by keeping
           every field mapping in a swappable JOLT spec instead of Java code.
         </p>
         <ul class="tag-list">
@@ -51,7 +51,7 @@
           system field crews use to capture pipes, valves, hydrants, and manholes on a
           map. When a crew creates or edits an asset spatially, AssetVision needs to know.
           When AssetVision's asset lifecycle changes, OpenSpatial's record needs to
-          follow. That's a bidirectional sync problem on its own &mdash; but the harder
+          follow. That's a bidirectional sync problem on its own, but the harder
           part is that no two councils configure their OpenSpatial tables or their
           AssetVision attribute schema the same way.
         </p>
@@ -59,8 +59,8 @@
           Hand-writing a mapping in Java for one council's field names and reference
           lists doesn't transfer to the next council without a code change and a
           redeploy. This project's core design decision was to push that entire mapping
-          &mdash; which source field goes to which target attribute, using which reference
-          list, for which asset type &mdash; out of the codebase and into a declarative,
+          (which source field goes to which target attribute, using which reference
+          list, for which asset type) out of the codebase and into a declarative,
           swappable <strong>JOLT specification</strong>, so one Lambda function serves every
           tenant.
         </p>
@@ -82,14 +82,14 @@
             <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
             <div class="process__content">
               <h4>JOLT Transform</h4>
-              <p>The tenant's own JOLT spec is loaded from cloud storage and run through <code>Chainr</code> to reshape the raw OpenSpatial attributes into an <code>AVAssetCreateReq</code> AssetVision understands &mdash; no per-council code path involved.</p>
+              <p>The tenant's own JOLT spec is loaded from cloud storage and run through <code>Chainr</code> to reshape the raw OpenSpatial attributes into an <code>AVAssetCreateReq</code> AssetVision understands; no per-council code path involved.</p>
             </div>
           </div>
           <div class="process__step">
             <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
             <div class="process__content">
               <h4>AssetVision API Call</h4>
-              <p>Depending on the operation, the service creates, patches, or soft-deletes the matching AssetVision asset &mdash; looking it up by its OpenSpatial GID when it needs to update or delete an asset it didn't just create.</p>
+              <p>Depending on the operation, the service creates, patches, or soft-deletes the matching AssetVision asset, looking it up by its OpenSpatial GID when it needs to update or delete an asset it didn't just create.</p>
             </div>
           </div>
           <div class="process__step">
@@ -103,7 +103,7 @@
             <div class="process__marker"><span class="circle">5</span></div>
             <div class="process__content">
               <h4>Audit Trail</h4>
-              <p>Every request &mdash; success or failure, in either direction &mdash; posts a completed-event notification to a central audit endpoint, the same pattern used across this developer's other Civica integrations.</p>
+              <p>Every request (success or failure, in either direction) posts a completed-event notification to a central audit endpoint, the same pattern used across this developer's other Civica integrations.</p>
             </div>
           </div>
         </div>
@@ -137,14 +137,14 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
           Crucially, the spec itself isn't bundled in the jar. <code>AVHelper</code> pulls it
           per request via <code>configManager.getOsToAVSpec(intData)</code>, which resolves
           to that tenant's own JSON file in cloud storage. Onboarding a new council is a
-          config change &mdash; write and upload their spec &mdash; not a Java change and a
+          config change (write and upload their spec), not a Java change and a
           redeploy. The same <code>JoltHelper</code>, <code>AVManager</code>, and
           <code>SpatialManager</code> serve every tenant; only the spec differs.
         </p>
 
         <h3 style="margin: 40px 0 16px; font-size:1.15rem;">Reading the spec: four techniques doing the real work</h3>
 
-        <p class="project-copy"><strong>1. Branching on the source's own node type.</strong> A single OpenSpatial table like <code>SP_SEWNODE</code> fans out into completely different AssetVision attribute sets depending on what kind of node it actually is &mdash; a manhole gets depth and lid-type fields, a valve gets material and setting fields &mdash; all from one shift block keyed on <code>NODE_TYPE</code>:</p>
+        <p class="project-copy"><strong>1. Branching on the source's own node type.</strong> A single OpenSpatial table like <code>SP_SEWNODE</code> fans out into completely different AssetVision attribute sets depending on what kind of node it actually is: a manhole gets depth and lid-type fields, a valve gets material and setting fields, all from one shift block keyed on <code>NODE_TYPE</code>:</p>
         <div class="code-block">
           <pre>"@(2,NODE_TYPE)": {
   "LAMPHOLE|MANHOLE_PUB|RODDING_EYE": {
@@ -164,7 +164,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
           The pipe-delimited keys (<code>LAMPHOLE|MANHOLE_PUB|RODDING_EYE</code>) are JOLT's
           OR-match syntax, and the <code>"#Sewer Access Point"</code> literal writes that
           same constant string into both <code>AssetTypeName</code> and <code>Name</code> in
-          one move &mdash; a static label becomes both the category and the display name.
+          one move: a static label becomes both the category and the display name.
         </p>
 
         <p class="project-copy"><strong>2. Value/code pairs and one-to-many fan-out.</strong> Reference-list fields are always shifted in pairs from the same lookup, and some values are written to more than one target at once:</p>
@@ -176,11 +176,11 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
         <p class="project-copy">
           One source value, <code>GEOM_LENGTH</code>, simultaneously populates a
           domain-specific <code>PipeLength</code> attribute and a generic
-          <code>MeasureQuantity</code> attribute that other asset types share &mdash; without
+          <code>MeasureQuantity</code> attribute that other asset types share, without
           reading the source twice.
         </p>
 
-        <p class="project-copy"><strong>3. A self-describing attribute schema.</strong> Later in the chain, a <code>default</code> operation doesn't fill in missing data &mdash; it attaches <code>Name</code>/<code>DataType</code> metadata to every one of ~80 possible fields, before a second <code>shift</code> flattens all of them into one generic array:</p>
+        <p class="project-copy"><strong>3. A self-describing attribute schema.</strong> Later in the chain, a <code>default</code> operation doesn't fill in missing data; it attaches <code>Name</code>/<code>DataType</code> metadata to every one of ~80 possible fields, before a second <code>shift</code> flattens all of them into one generic array:</p>
         <div class="code-block">
           <pre>{ "operation": "default", "spec": { "tmp": {
     "AssetName": {"Name": "Asset Name", "DataType": "String"},
@@ -193,7 +193,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
         </div>
         <p class="project-copy">
           That's what lets AssetVision's API accept one uniform <code>Attributes[]</code>
-          array instead of ~80 hardcoded fields &mdash; each entry already knows its own
+          array instead of ~80 hardcoded fields; each entry already knows its own
           display name and data type.
         </p>
 
@@ -206,8 +206,8 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
         <p class="project-copy">
           Combined with a <code>modify-default-beta</code> step that guarantees fields like
           <code>AssetStatus</code> always resolve to an <code>Active</code> reference item even
-          when the source omitted one, the whole pipeline &mdash; branch, map, describe,
-          flatten, normalise, default &mdash; runs as a single <code>Chainr</code> call per
+          when the source omitted one, the whole pipeline (branch, map, describe,
+          flatten, normalise, default) runs as a single <code>Chainr</code> call per
           request, entirely swappable per tenant.
         </p>
       </div>
@@ -242,7 +242,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
           Both directions share the same shape: a controller validates the tenant's
           <code>x-api-key</code>, a service resolves the operation, <code>JoltHelper</code>
           reshapes the payload through that tenant's spec, and a manager class owns
-          authentication and the outbound call &mdash; <code>AVManager</code> caches an OAuth2
+          authentication and the outbound call: <code>AVManager</code> caches an OAuth2
           password-grant token for AssetVision, <code>SpatialManager</code> caches an API-key
           token for OpenSpatial and reads its expiry straight out of the JWT. A
           <code>ConfigManager</code> sits underneath both, caching each tenant's config and
@@ -257,14 +257,14 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
         <h2 class="section__heading"><span>&#9670;</span> Sequence of Events</h2>
         <p class="project-copy">
           The diagrams above show the layers; these show the same two directions
-          ordered in time &mdash; the tenant/JOLT resolution, the outbound auth, and
+          ordered in time: the tenant/JOLT resolution, the outbound auth, and
           the audit event that fires whether the sync succeeds or fails. Since every
           layer in a given direction runs inside the same Lambda invocation, the
           controller/service/JOLT/manager chain is shown as one lifeline with its
           internal handoffs drawn as self-calls.
         </p>
 
-        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Spatial &rarr; AssetVision &mdash; <code>PUT /spatials/spatial</code></h3>
+        <h3 style="margin: 32px 0 16px; font-size:1.1rem;">Spatial &rarr; AssetVision: <code>PUT /spatials/spatial</code></h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 1136 480" role="img" aria-label="Sequence diagram of the spatial to AssetVision sync flow" class="sequence-diagram__svg">
             <defs>
@@ -310,7 +310,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
           </svg>
         </div>
 
-        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">AssetVision &rarr; Spatial &mdash; <code>POST /assets/asset</code></h3>
+        <h3 style="margin: 40px 0 16px; font-size:1.1rem;">AssetVision &rarr; Spatial: <code>POST /assets/asset</code></h3>
         <div class="sequence-diagram-wrap">
           <svg viewBox="0 0 1136 480" role="img" aria-label="Sequence diagram of the AssetVision to spatial sync flow" class="sequence-diagram__svg">
             <defs>
@@ -383,7 +383,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
         <p class="project-copy">
           Rather than the more typical API Gateway front door, this Lambda sits behind
           the same kind of shared Application Load Balancer used elsewhere in this
-          developer's projects &mdash; the ALB's listener rule forwards matching
+          developer's projects: the ALB's listener rule forwards matching
           hostname/path traffic straight to the function, with multi-value headers
           enabled so the <code>aws-serverless-java-container</code> bridge can translate
           the ALB event into a normal Spring MVC request. The Lambda runs container-image
@@ -399,7 +399,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> API Surface</h2>
         <div class="code-block">
-          <span class="code-block__label">PUT /spatials/spatial &mdash; OpenSpatial asset event</span>
+          <span class="code-block__label">PUT /spatials/spatial: OpenSpatial asset event</span>
           <pre>{
   "status": 200,
   "message": "Success",
@@ -407,7 +407,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
 }</pre>
         </div>
         <div class="code-block">
-          <span class="code-block__label">POST /assets/asset &mdash; AssetVision asset event</span>
+          <span class="code-block__label">POST /assets/asset: AssetVision asset event</span>
           <pre>{
   "status": 200,
   "message": "Success",
@@ -427,7 +427,7 @@ public String transformJsonToJson(String inputJsonString, List&lt;Object&gt; jol
       <div class="container">
         <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
         <ul class="timeline__bullets project-copy">
-          <li>Tenant resolution, secrets, and the JOLT spec itself are all fetched from cloud storage per request and cached for 30 minutes &mdash; the first request after a cold start or cache expiry is the slowest.</li>
+          <li>Tenant resolution, secrets, and the JOLT spec itself are all fetched from cloud storage per request and cached for 30 minutes; the first request after a cold start or cache expiry is the slowest.</li>
           <li>Authentication inbound is a shared per-tenant API key rather than per-user identity; outbound calls to AssetVision use OAuth2, and to OpenSpatial a short-lived JWT whose expiry is read directly from the token.</li>
           <li>Verified manually against UAT instances of both systems; no automated integration test suite yet.</li>
           <li>A local Spring profile (<code>-Plocal</code>) runs the same code on embedded Tomcat for development, separate from the <code>LambdaHandler</code> entry point used in deployment.</li>

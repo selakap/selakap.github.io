@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon Connect &harr; Microsoft Dynamics 365 Call Logging Integration | Selaka Piumal</title>
+  <meta name="description" content="Case study: a scheduled AWS Lambda integration that logs every Amazon Connect contact-centre call into Microsoft Dynamics 365 as a matched Phone Call activity, with OAuth2 auth, contact resolution, and DynamoDB-backed idempotency.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Amazon Connect &harr; Microsoft Dynamics 365 Call Logging Integration</h1>
+        <p class="project-hero__subtitle">
+          A scheduled AWS Lambda integration built for Paintback that turns every Amazon
+          Connect contact-centre call (inbound, outbound, or voicemail) into a
+          <strong>Microsoft Dynamics 365</strong> Phone Call activity automatically, matched
+          to the caller's CRM contact record via the <strong>Dynamics Web API</strong>, with
+          no agent ever touching Dynamics by hand.
+        </p>
+        <ul class="tag-list">
+          <li>Microsoft Dynamics 365</li><li>Dynamics Web API v9.2</li><li>OAuth2</li>
+          <li>Java 17</li><li>AWS Lambda</li><li>Amazon Connect</li><li>Docker</li>
+          <li>Amazon EventBridge</li><li>Amazon DynamoDB</li><li>Amazon S3</li>
+          <li>CloudFormation</li><li>Bitbucket Pipelines</li><li>SonarCloud</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          Paintback's customer service team takes calls through <strong>Amazon Connect</strong>,
+          but every customer record, case, and history the team actually works from lives in
+          <strong>Microsoft Dynamics 365</strong>. Amazon Connect has no native connector into
+          Dynamics, so without this integration a call happens, gets logged in Connect's own
+          contact trace records, and then simply isn't visible anywhere a Dynamics user would
+          look: no phone call activity on the customer's timeline, no record an agent
+          called back, no way to see call history alongside cases and correspondence.
+        </p>
+        <p class="project-copy">
+          The integration closes that gap by treating Dynamics 365 as the system of record for
+          customer communication: on a 5-minute schedule, it pulls whatever calls finished in
+          Amazon Connect since the last run, works out who the caller actually was in Dynamics,
+          and writes a properly-typed Phone Call activity back (incoming, outgoing, or
+          voicemail) linked to that contact.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <p class="project-copy">
+          One Lambda invocation, fired by EventBridge every five minutes, authenticates to
+          Dynamics <strong>once</strong> and reuses that token across every call it processes in
+          that run; individual calls are then fanned out to a 100-thread pool so a busy
+          5-minute window doesn't serialise against the Dynamics API.
+        </p>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Authenticate to Dynamics 365</h4>
+              <p>The handler opens every run with an OAuth2 Resource Owner Password Credentials request against Microsoft's <code>login.microsoftonline.com</code> token endpoint, using a dedicated Dynamics API user. The resulting bearer token is reused for every contact and every subsequent Dynamics Web API call made during the invocation.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Find New Calls in Amazon Connect</h4>
+              <p><code>SearchContacts</code> is called against the Amazon Connect instance for anything whose <code>DISCONNECT_TIMESTAMP</code> falls between the last recorded run time (bookmarked as JSON on S3) and now; the new bookmark is only written once the batch is fetched successfully.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>De-duplicate via DynamoDB</h4>
+              <p>Every contact id is checked against a DynamoDB idempotency table before any Dynamics call is made: already-succeeded contacts are skipped, permanently-failed ones (&gt;3 retries) are ignored, and new or retryable ones are queued to the thread pool as a <code>ContactIdProcessor</code> task.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Enrich &amp; Classify the Call</h4>
+              <p>Per contact, <code>DescribeContact</code> and <code>GetContactAttributes</code> pull the channel, initiation method, timestamps, and the customer's phone number, which is used to compute call duration and to classify the interaction as an incoming call, outgoing call, or voicemail.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Resolve the Dynamics Contact</h4>
+              <p>The caller's number is matched against every phone field on the Dynamics <code>contacts</code> entity (mobile, telephone 1&ndash;3, and assistant phone), comparing the <strong>last 8 digits only</strong>, so formatting differences (country codes, spacing, leading zeros) between Connect and Dynamics don't break the match.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">6</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Write the Phone Call Activity</h4>
+              <p>A <code>phonecalls</code> record is POSTed to the Dynamics Web API with subject, description, direction, actual start/end, duration in minutes, and, when a match was found, the contact bound via an <code>@odata.bind</code>-style reference, so the call appears directly on that customer's timeline.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">7</span></div>
+            <div class="process__content">
+              <h4>Record &amp; Self-Heal</h4>
+              <p>Success or failure is written back to DynamoDB and reported to Symphony3's central integration-notifier webhook. A final <code>FailedContactProcessor</code> pass re-drives any contact still <code>received</code>/<code>failed</code> for more than 3 minutes, capped at 3 retries, so a transient Dynamics outage self-heals on the next few runs instead of losing the call.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge Rule<br><small>every 5 minutes</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>container image, in-VPC</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">AwsConnectToDynamicsHandler<br><small>orchestrates discovery &amp; sync</small></div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Every Invocation</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--telephony" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.32 1.85.55 2.81.68A2 2 0 0 1 22 16.92z"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon Connect<br><small>SearchContacts, DescribeContact, GetContactAttributes</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--dynamics" aria-hidden="true">D365</span>
+              <div class="arch-box__label">Microsoft Dynamics 365<br><small>OAuth2 token &middot; contacts lookup &middot; phonecalls write</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--database" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <div class="arch-box__label">DynamoDB<br><small>idempotency + retry state</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>last-run-time bookmark</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook<br><small>external monitoring</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          There's no persistent server and no public endpoint in production: the container
+          image Lambda sits inside Paintback's VPC on a private subnet and is invoked directly by
+          the EventBridge schedule rule, not exposed over HTTP. A local <code>template.yaml</code>
+          (AWS SAM) adds a <code>POST /call</code> API Gateway route purely so the same handler
+          can be triggered on demand during development.
+        </p>
+        <p class="project-copy">
+          Dynamics 365 is treated as the source of truth for who the caller is: Amazon Connect
+          only ever supplies a phone number and call metadata, while every write (the Phone
+          Call activity itself, and the contact it's linked to) goes through the Dynamics
+          Web API (<code>/api/data/v9.2/</code>), authenticated per-invocation rather than with a
+          long-lived cached token.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: A Call Becomes a Dynamics Activity</h2>
+        <p class="project-copy">
+          One inbound call, end to end: the OAuth2 exchange with Dynamics happens first and only
+          once, then every following Dynamics call in the diagram reuses that same bearer token.
+        </p>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 980 700" role="img" aria-label="Sequence diagram of the Amazon Connect to Microsoft Dynamics 365 call logging flow" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqPbArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqPbArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="620" y="64" width="12" height="556" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="670" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">EventBridge</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon Connect</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Dynamics 365</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+            <rect x="826" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="882" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">Invoke (every 5 min)</text>
+
+            <line x1="242" y1="110" x2="626" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="434" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST /oauth2/token (ROPC grant: client id/secret + user/pass)</text>
+            <line x1="626" y1="150" x2="242" y2="150" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqPbArrowMuted)"></line>
+            <text x="434" y="143" text-anchor="middle" font-size="11" fill="var(--text-muted)">access_token (reused for the whole run)</text>
+
+            <line x1="242" y1="190" x2="370" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="306" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(last_runtime.json)</text>
+
+            <line x1="242" y1="230" x2="498" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="370" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">SearchContacts(disconnected since last run)</text>
+            <line x1="498" y1="270" x2="242" y2="270" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqPbArrowMuted)"></line>
+            <text x="370" y="263" text-anchor="middle" font-size="11" fill="var(--text-muted)">contact list</text>
+
+            <line x1="242" y1="310" x2="754" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="498" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">Query(source_id=contactId): new or retryable?</text>
+
+            <line x1="242" y1="350" x2="498" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="370" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">DescribeContact + GetContactAttributes</text>
+            <line x1="498" y1="390" x2="242" y2="390" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqPbArrowMuted)"></line>
+            <text x="370" y="383" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">channel, direction, duration, phone number</text>
+
+            <line x1="242" y1="430" x2="626" y2="430" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="434" y="423" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET contacts (select phone fields)</text>
+            <line x1="626" y1="470" x2="242" y2="470" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqPbArrowMuted)"></line>
+            <text x="434" y="463" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">contact list, matched by last 8 digits of phone</text>
+
+            <line x1="242" y1="510" x2="626" y2="510" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="434" y="503" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST /phonecalls (subject, direction, duration, contact bind)</text>
+            <line x1="626" y1="550" x2="242" y2="550" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqPbArrowMuted)"></line>
+            <text x="434" y="543" text-anchor="middle" font-size="11" fill="var(--text-muted)">201 Created + activityid</text>
+
+            <line x1="242" y1="590" x2="754" y2="590" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="498" y="583" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">UpdateItem(status=success, target_id=activityid)</text>
+
+            <line x1="242" y1="630" x2="882" y2="630" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqPbArrow)"></line>
+            <text x="562" y="623" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band marks the Dynamics 365 lifeline; every write in this flow
+          ultimately lands there. Voicemail (Connect's <code>TASK</code> channel) follows the same
+          path but skips straight to the phone-log write with no separate transcription step.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Dynamics 365 Call Classification</h2>
+        <p class="project-copy">
+          Amazon Connect's channel and initiation-method fields are mapped onto Dynamics 365's
+          Phone Call option-set values so every activity shows the right direction and icon in
+          the CRM, not just a generic logged call:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Amazon Connect</th><th>Dynamics 365 Phone Call</th><th>Direction Code</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Channel <code>VOICE</code>, method <code>INBOUND</code></td><td>Incoming call (<code>100000000</code>)</td><td><code>directioncode = false</code></td></tr>
+              <tr><td>Channel <code>VOICE</code>, method <code>OUTBOUND</code></td><td>Outgoing call (<code>100000001</code>)</td><td><code>directioncode = true</code></td></tr>
+              <tr><td>Channel <code>TASK</code> (voicemail)</td><td>Voice mail (<code>100000002</code>)</td><td><code>directioncode = false</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          <code>newtype</code> and <code>directioncode</code> are custom/standard Phone Call
+          fields on the Paintback Dynamics org used to drive this classification; the subject
+          line itself is generated per type (e.g. <em>"Call from {number} to call centre"</em> vs
+          <em>"Voicemail from {number} to call centre"</em>) so agents can scan the timeline
+          without opening every activity.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Data &amp; Persistence</h2>
+        <p class="project-copy">
+          Dynamics 365 itself holds no integration state; it only ever receives finished
+          Phone Call activities. Everything the Lambda needs to know what's already been
+          processed lives outside it, in S3 and DynamoDB.
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">S3 bucket layout</span>
+          <pre>TenantConfigurations/
+&#9492;&#9472; {TENANT_ID}/
+    &#9492;&#9472; last_run_time/
+        &#9492;&#9472; last_runtime.json      # ISO timestamp of the last successful SearchContacts window</pre>
+        </div>
+        <p class="project-copy">
+          DynamoDB's <code>integrationrecords</code> table (partitioned by
+          <code>tenant_integrations_id</code>, sorted by <code>source_id</code> = the Connect
+          contact id) is the only durable idempotency record: it tracks <code>current_status</code>
+          (<code>received</code> &rarr; <code>success</code>/<code>failed</code>),
+          <code>retry_count</code>, and the resulting Dynamics <code>target_id</code> (the phone
+          call's <code>activityid</code>), so a call that already reached Dynamics is never
+          logged twice even if the same 5-minute window is scanned again.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>develop &amp; production</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>mvn verify + quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>Docker image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda, role, VPC, EventBridge rule</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>mvn clean package</code> (Maven Shade) builds a fat jar around the AWS Lambda
+          Java Runtime Interface Client; the <code>Dockerfile</code> packages it as a container
+          image. <code>cloudformations/cloudformation.yml</code> provisions the image-based
+          Lambda inside Paintback's VPC on a private subnet with its own security group, an
+          execution role scoped to the tenant's S3 config prefix plus DynamoDB and ENI
+          permissions, and an EventBridge rule on a <code>cron(0/5 * * * ? *)</code> schedule,
+          with separate CloudFormation stacks and separate Dynamics 365 environments (UAT vs
+          production org) for <code>develop</code> and <code>production</code>. A dedicated
+          <code>run-sonar-scan-quality-gw</code> pipeline runs SonarCloud analysis ahead of every
+          merge.
+        </p>
+        <p class="project-copy">
+          Unit tests (JUnit 5 + Mockito) cover the handler, managers, models, operators, and
+          processors, with JaCoCo wired into the Maven build to produce coverage reports on
+          every <code>verify</code>.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/main/java/org/symphony3/smartglue/integration/paintback/
+&#9500;&#9472; handlers/     AwsConnectToDynamicsHandler   # Lambda entry point: discovery, fan-out, retry
+&#9500;&#9472; processors/   ContactIdProcessor            # per-call: enrich, match, write to Dynamics
+&#9474;               FailedContactProcessor        # re-drives received/failed rows after cool-down
+&#9500;&#9472; managers/     DynamoManager, IntegrationCompletedEventManager
+&#9500;&#9472; operators/    HttpOperator (java.net.http), DynamoOperator &amp; S3Operator (AWS SDK v2)
+&#9500;&#9472; models/       DynamicsTokenResponce, DynamicsContactsResponse,
+&#9474;               DynamicsPhoneLogRequest, DynamicsPhoneCallResponse,
+&#9474;               IntegrationCompletedEvent
+&#9492;&#9472; constants/    PaintbackConstants: endpoints, env var keys, option-set codes
+
+cloudformations/cloudformation.yml   # production infrastructure (VPC-bound Lambda)
+template.yaml                         # local/dev SAM template (adds POST /call)
+bitbucket-pipelines.yml               # develop, production &amp; SonarCloud pipelines</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <p class="project-copy">
+          Everything, both the AWS side and the Dynamics side, is supplied via
+          Lambda environment variables, so nothing tenant-specific is hardcoded:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>DYNAMICS_RESOURCE_PAINTBACK</code> / <code>DYNAMICS_HOST</code></td><td>Dynamics 365 org URL used for the OAuth2 <code>resource</code> and Web API base URL</td></tr>
+              <tr><td><code>DYNAMICS_CLIENT_ID_PAINTBACK</code> / <code>DYNAMICS_CLIENT_SECRET_PAINTBACK</code></td><td>Azure AD app registration credentials for the OAuth2 client</td></tr>
+              <tr><td><code>DYNAMICS_USER_PAINTBACK</code> / <code>DYNAMICS_USER_PASS_PAINTBACK</code></td><td>Dedicated Dynamics API user for the Resource Owner Password Credentials grant</td></tr>
+              <tr><td><code>DYNAMICS_PAINTBACK_PHONE_NUMBER</code></td><td>Paintback's own call-centre number, used to keep it out of the customer-matching logic</td></tr>
+              <tr><td><code>AWS_CONNECT_INSTANCE_ID</code></td><td>Amazon Connect instance to poll via <code>SearchContacts</code></td></tr>
+              <tr><td><code>TENANT_ID_PAINTBACK</code> / <code>TENANT_INTEGRATION_ID_PAINTBACK</code></td><td>Tenant identifiers stamped on every DynamoDB record and webhook event</td></tr>
+              <tr><td><code>AWS_ACCESS_KEY_INTEGRATION</code> / <code>AWS_SECRET_KEY_INTEGRATION</code> / <code>AWS_REGION_INTEGRATION</code></td><td>Explicit AWS credentials for the Connect/S3/DynamoDB SDK clients</td></tr>
+              <tr><td><code>AWS_SG_BUCKET_NAME</code></td><td>S3 bucket holding the per-tenant last-run-time bookmark</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Completed-event webhook endpoint and API key for cross-integration monitoring</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>Runs entirely inside Paintback's VPC on a private subnet with no public HTTP endpoint in production: EventBridge invokes the Lambda directly every 5 minutes, and the SAM template's <code>POST /call</code> route exists only for local development.</li>
+          <li>Dynamics 365 authentication uses the OAuth2 Resource Owner Password Credentials grant against a dedicated service account, re-authenticated once per invocation rather than caching a long-lived token across runs.</li>
+          <li>Contact matching compares only the last 8 digits of a phone number across five Dynamics contact fields, which was a deliberate trade-off to tolerate inconsistent country-code and spacing formats between Connect and Dynamics.</li>
+          <li>Up to 100 calls are processed concurrently per run via a fixed thread pool; DynamoDB caps retries at 3 attempts with a 3-minute cool-down before a <code>received</code>/<code>failed</code> record is retried.</li>
+          <li>Separate dev and production stacks point at entirely separate Dynamics 365 organisations (UAT vs production CRM), not just separate environment variables on the same org.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
