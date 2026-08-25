@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OneBlink &rarr; Civica Authority Document Upload | Selaka Piumal</title>
+  <meta name="description" content="Case study: an ASP.NET Core Lambda that receives OneBlink form-submission webhooks and files the completed report and every attachment into Civica Authority's records management, using OneBlink's official .NET SDK.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">OneBlink &rarr; Civica Authority Document Upload</h1>
+        <p class="project-hero__subtitle">
+          An ASP.NET Core service, packaged as a container-image AWS Lambda behind API
+          Gateway, that receives a <strong>OneBlink</strong> form-submission webhook the
+          moment a field officer taps submit, pulls the completed report PDF and every
+          attachment straight out of OneBlink's own API, and files them into
+          <strong>Civica Authority</strong>'s records management against the right account,
+          all before the officer has driven to the next job.
+        </p>
+        <ul class="tag-list">
+          <li>.NET 10</li><li>ASP.NET Core</li><li>AWS Lambda</li><li>Amazon API Gateway</li>
+          <li>OneBlink SDK</li><li>Civica Authority</li><li>Docker</li>
+          <li>Bitbucket Pipelines</li><li>SonarQube</li><li>xUnit</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          A field officer completes a compliance or inspection form in OneBlink and hits
+          submit, but that submission living inside OneBlink isn't the same as it being
+          on the record: Civica Authority is the council's actual system of truth, and
+          without this integration, getting the finished report and any photos out of
+          OneBlink and filed against the correct Authority account is a manual job, find
+          the submission, download its PDF, download each attachment, work out which
+          account it belongs to, and upload each file by hand into records management.
+        </p>
+        <p class="project-copy">
+          This is the return half of the round trip: a companion integration on this site
+          already covers Authority dispatching pre-filled OneBlink jobs out to officers;
+          this one covers what happens the moment an officer sends a completed form back.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Receive the Webhook</h4>
+              <p>OneBlink POSTs a <code>SubmissionEvent</code> (form id, submission id, forms-app id) to <code>/oneblinkcivica/api/submission</code> with an <code>x-api-key</code> header, straight through API Gateway's proxy integration into the ASP.NET Core Lambda.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Resolve Tenant &amp; Validate</h4>
+              <p>The request's <code>Host</code> header (<code>{tenantName}-{recipeCode}.&hellip;</code>) resolves a tenant code via the platform's Portal API, which also loads that tenant's recipe config from S3 and resolves any secret-manager-backed values. The inbound <code>x-api-key</code> is checked against the tenant's configured OneBlink key before any OneBlink or Authority call is made.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Map the Form</h4>
+              <p>The tenant's <code>ONEBLINK_FORMS_CONFIG</code> is a JSON array mapping each OneBlink form id to which field holds the Civica account number and which external document type the upload should be filed under, looked up by this submission's form id.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Fetch &amp; Validate the Account</h4>
+              <p>The submission data is fetched via OneBlink's own .NET SDK, the account-number field is extracted, and it's parsed and validated as a Civica formatted account number (<code>AccountType.Year.Number.Version</code>) before anything is uploaded anywhere.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Pull the Report &amp; Attachments</h4>
+              <p>The submission PDF is fetched via OneBlink's PDF client; the form's own element definition is walked recursively to find every file-upload field, and each attachment file behind those fields is streamed down from OneBlink individually.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">6</span></div>
+            <div class="process__content">
+              <h4>Upload &amp; Report</h4>
+              <p>The report PDF, then every attachment, is POSTed to Civica Authority's records-management attachments endpoint against the resolved account, authenticated with a single bearer token cached for the request. The outcome, success or failure, is sent to the platform's completed-event endpoint, tagged with the OneBlink submission id and the Authority account.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--reporting" aria-hidden="true">OB</span>
+            <div class="arch-box__label">OneBlink Webhook<br><small>form submitted</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">API</span>
+            <div class="arch-box__label">Amazon API Gateway<br><small>proxy integration</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>ASP.NET Core, container image, in-VPC</small></div>
+          </div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Every Submission</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--reporting" aria-hidden="true">OB</span>
+              <div class="arch-box__label">OneBlink SDK<br><small>form def, submission data, PDF, attachments</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Civica Authority<br><small>OAuth2 token + records-management upload</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>tenant recipe config</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Portal API<br><small>tenant code + secret resolution</small></div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook</div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          Unlike the shared Application Load Balancer this developer's other Civica
+          Authority integrations run behind, this service only ever needs to receive
+          OneBlink's own outbound webhook, not serve council-facing traffic, so it sits
+          behind a dedicated API Gateway with a single Lambda proxy integration instead.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Official SDK vs. Hand-Rolled</h2>
+        <p class="project-copy">
+          This project sits right next to its sibling on this site, the Authority-to-OneBlink
+          job/prefill integration, but the two ecosystems handle OneBlink's developer-key
+          authentication very differently. OneBlink ships official SDKs for JavaScript and
+          .NET only.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th></th><th>This integration (.NET)</th><th>Sibling integration (Java)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>OneBlink client</td><td>Official <code>OneBlink.SDK</code> package (<code>FormsClient</code>, <code>PdfClient</code>)</td><td>No SDK available: hand-built HTTP calls</td></tr>
+              <tr><td>Auth token</td><td>Handled internally by the SDK</td><td>Signed JWT constructed by hand, mirroring the .NET SDK's own claim shape</td></tr>
+              <tr><td>Form definition parsing</td><td><code>dynamic</code> deserialization via the SDK's own models</td><td>Manual JSON walking of Authority's own response shapes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          Using the real SDK here means authentication, retry semantics, and response
+          typing are OneBlink's own responsibility rather than this developer's; the trade-off
+          shows up in <code>OneBlinkClientFacade</code> instead, an interface wrapping every
+          SDK call so it can be mocked in tests without a live OneBlink environment, since
+          the SDK's own client classes aren't designed to be swapped out for a test double.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Attachment Discovery</h2>
+        <p class="project-copy">
+          OneBlink forms are trees, pages contain sections, sections contain elements, and
+          a file-upload field can be nested arbitrarily deep. Rather than requiring every
+          tenant to hand-list which fields hold attachments, <code>OneBlinkService</code>
+          walks the form's own element definition recursively, capped at five levels deep,
+          collecting the name of every element whose type is <code>"files"</code>:
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">app/Services/OneBlinkService.cs</span>
+          <pre>void CollectFileFieldNames(dynamic elements, List&lt;string&gt; fieldNames, int depth)
+{
+    if (depth &gt; 5) return;
+
+    foreach (var element in elements)
+    {
+        if (element.type == "files")
+            fieldNames.Add(element.name);
+
+        if (element.elements != null &amp;&amp; element.elements.Count &gt; 0)
+            CollectFileFieldNames(element.elements, fieldNames, depth + 1);
+    }
+}</pre>
+        </div>
+        <p class="project-copy">
+          Those field names are then looked up against the actual submission data to pull
+          out every attachment's id and filename, so adding a new photo-upload field to an
+          existing form is picked up automatically on the next submission, no config change
+          required on this side at all.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Form &rarr; Account Mapping</h2>
+        <p class="project-copy">
+          Every tenant's <code>ONEBLINK_FORMS_CONFIG</code> is a small JSON array, one
+          entry per OneBlink form this integration should handle:
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">ONEBLINK_FORMS_CONFIG (per tenant)</span>
+          <pre>[
+  {
+    "FormId": 1234,
+    "UNIDFieldName": "unid_fa",
+    "AttachmentType": "ATTACH_CC"
+  }
+]</pre>
+        </div>
+        <p class="project-copy">
+          <code>UNIDFieldName</code> names the form field whose value is the Civica
+          formatted account number for this submission; <code>AttachmentType</code> is the
+          external document type code every upload for that form is filed under. The
+          account number itself is validated by shape, exactly three dots, four parts,
+          <code>AccountType.Year.Number.Version</code>, before any upload is attempted, so a
+          misconfigured form field fails fast with a clear message instead of a confusing
+          upstream Authority error.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: A Submission Becomes a Filed Document</h2>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 500" role="img" aria-label="Sequence diagram of a OneBlink submission being filed into Civica Authority" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqObcArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqObcArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="620" y="64" width="12" height="356" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">OneBlink</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">API Gateway</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Portal API</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="826" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="882" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST submission event</text>
+
+            <line x1="242" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="306" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">proxy integration</text>
+
+            <line x1="370" y1="150" x2="498" y2="150" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="434" y="143" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">resolve tenant code + secret keys</text>
+
+            <line x1="370" y1="190" x2="626" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="498" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(recipe config.json)</text>
+
+            <line x1="370" y1="230" x2="114" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="242" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">SDK: form def, submission, PDF, attachments</text>
+
+            <line x1="370" y1="270" x2="754" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="562" y="263" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST token (password grant)</text>
+
+            <line x1="370" y1="310" x2="754" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="562" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST recordmanagement/attachments (report, then each file)</text>
+
+            <line x1="370" y1="350" x2="882" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObcArrow)"></line>
+            <text x="626" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+
+            <line x1="370" y1="390" x2="242" y2="390" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqObcArrowMuted)"></line>
+            <text x="306" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">200 OK</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band marks the Lambda's active lifetime for this request; the
+          bearer token is fetched once and reused for the report upload and every
+          attachment upload within the same request.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>manually triggered (dev &amp; prod)</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">xUnit Suite<br><small>runs before every deploy</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">AWS SAM Build<br><small>Docker image &rarr; ECR</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda + API Gateway</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>deploy-OneBlinkCivica-dev</code> and <code>deploy-OneBlinkCivica-prod</code>
+          are both manually triggered from Bitbucket Pipelines rather than running on every
+          push; each runs the xUnit suite first, then uses AWS SAM to build the Docker
+          image, push it to ECR, and update the Lambda stack via CloudFormation. The Lambda
+          itself runs inside a VPC with an execution role scoped only to
+          <code>s3:GetObject</code> on the tenant config prefix.
+        </p>
+        <p class="project-copy">
+          Code quality runs differently to this developer's Java integrations: instead of a
+          SonarCloud-integrated CI step, the README documents a locally-run SonarQube
+          container plus the .NET-specific <code>dotnet-sonarscanner</code> tool, which,
+          unlike the Java Maven plugin, doesn't understand
+          <code>sonar-project.properties</code> at all and takes every setting as a
+          command-line parameter instead.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/
+&#9500;&#9472; Controllers/SubmissionController.cs   # webhook entry point, tenant resolution, event dispatch
+&#9500;&#9472; Services/
+&#9474;   &#9500;&#9472; OneBlinkCivicaIntegration.cs       # orchestration: validate -&gt; fetch -&gt; extract -&gt; upload
+&#9474;   &#9500;&#9472; OneBlinkService.cs                 # SDK wrapper: form def, submission, PDF, attachments
+&#9474;   &#9500;&#9472; OneBlinkClientFacade.cs            # thin interface over the OneBlink SDK (mockable in tests)
+&#9474;   &#9492;&#9472; CivicaService.cs                   # OAuth2 token + records-management upload
+&#9500;&#9472; Platform/
+&#9474;   &#9500;&#9472; PortalApiService.cs                # tenant code + secret-manager key resolution
+&#9474;   &#9492;&#9472; S3ConfigRepository.cs              # loads recipe config.json from S3
+&#9500;&#9472; Models/SubmissionEvent.cs              # OneBlink webhook payload model
+&#9500;&#9472; LambdaEntryPoint.cs / LocalEntryPoint.cs
+&#9500;&#9472; serverless.template                    # AWS SAM template (Lambda + API Gateway)
+&#9492;&#9472; Dockerfile
+
+tests/OneBlinkCivica.Tests/   xUnit suite: controller, integration, service &amp; SDK-facade tests</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>PortalAPI</code></td><td>Base URL of the platform's Portal API, used to resolve tenant codes and secret-manager keys</td></tr>
+              <tr><td><code>AWS_BUCKET_NAME</code></td><td>S3 bucket holding <code>TenantConfigurations/{tenantCode}-{recipeCode}/config.json</code></td></tr>
+              <tr><td><code>EventAPI</code> / <code>EventAPIKey</code></td><td>Completed-event endpoint and API key, posted to after every submission</td></tr>
+              <tr><td><code>AUTHORITY_HOST</code> / <code>AUTHORITY_CLIENT_ID</code> / <code>AUTHORITY_CLIENT_SECRET</code></td><td>Per-tenant Authority connection details, resolved from the recipe config</td></tr>
+              <tr><td><code>AUTHORITY_USERNAME</code> / <code>AUTHORITY_PASSWORD</code></td><td>Authority service-account credentials for the OAuth2 password grant</td></tr>
+              <tr><td><code>ONEBLINK_API_KEY</code></td><td>Expected <code>accessKey:secretKey</code> pair, validated against the inbound <code>x-api-key</code></td></tr>
+              <tr><td><code>ONEBLINK_FORMS_CONFIG</code></td><td>Per-tenant JSON array mapping OneBlink form ids to their account-number field and document type</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>Uses OneBlink's official .NET SDK directly, a genuine contrast to the sibling Authority-to-OneBlink integration on this site, which had to hand-build a signed JWT since no Java SDK exists for OneBlink's developer-key auth.</li>
+          <li>Attachment fields are discovered by recursing through the form's own element definition (capped at 5 levels), not configured by hand, so a new file-upload field on an existing form is picked up automatically on the next submission.</li>
+          <li>The Civica account number is validated by shape before any upload is attempted, exactly three dots, four parts, so a misconfigured form field fails fast with a clear error rather than surfacing as a confusing Authority-side failure.</li>
+          <li>Runs behind a dedicated API Gateway proxy integration rather than the shared ALB used by this developer's other Civica Authority integrations, since it only ever needs to receive OneBlink's own webhook, not serve council-facing traffic.</li>
+          <li>Code quality uses a locally-run SonarQube instance and the .NET-specific SonarScanner, a different toolchain from the SonarCloud-integrated pipelines used on this developer's Java/Maven integrations.</li>
+          <li>Both deployment pipelines (dev and prod) are manually triggered from Bitbucket Pipelines rather than running automatically on push.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
