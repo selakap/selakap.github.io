@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civica Authority Register Payment Lookup API | Selaka Piumal</title>
+  <meta name="description" content="Case study: a multi-tenant FastAPI-on-Lambda service that resolves a Civica Authority payment register into a fully joined, tenant-mapped response, with concurrent data collection, OAuth2 token caching, and structured, correlated error handling.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Civica Authority Register Payment Lookup API</h1>
+        <p class="project-hero__subtitle">
+          A multi-tenant Python service, packaged as a container-image AWS Lambda behind
+          FastAPI and Mangum, that resolves everything owed against an Authority payment
+          register in one call: it walks a chain of related Civica Authority records
+          concurrently, normalises the result through a per-tenant JOLT spec, and returns
+          it as a clean, ready-to-bill list, built as reusable platform scaffolding for
+          whichever downstream payment system a council needs it to feed.
+        </p>
+        <ul class="tag-list">
+          <li>Python 3.13</li><li>FastAPI</li><li>Mangum</li><li>httpx (async)</li>
+          <li>AWS Lambda</li><li>Civica Authority</li><li>JOLT</li>
+          <li>Application Load Balancer</li><li>Amazon S3</li><li>Multi-Tenant</li>
+          <li>Bitbucket Pipelines</li><li>SonarCloud</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          A single Civica Authority "register" record, a compliance or licensing account
+          tied to a property, can carry a whole chain of related data spread across
+          several separate Authority endpoints: the pending payment requests against it,
+          the register's own extended details and linked parcel, and the applicant on
+          file who's actually meant to be billed. None of that is exposed as one Authority
+          endpoint, so answering "what does this register currently owe, and who do we
+          bill?" means several sequential lookups per payment request, then reshaping
+          whatever comes back into whatever format the council's actual payment or
+          receipting system expects, which differs tenant to tenant.
+        </p>
+        <p class="project-copy">
+          This service exists to do that joining and reshaping once, behind a single
+          endpoint, so a downstream payment integration never has to know Authority's
+          data model at all, only the tenant-specific, JOLT-mapped shape this API hands
+          back.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Resolve the Tenant</h4>
+              <p><code>AppHelper</code> parses the inbound <code>Host</code> header as <code>{tenantName}-{recipeCode}.&hellip;</code>, resolves <code>tenantName</code> to a numeric tenant code via a portal lookup API, and loads that tenant's config and secrets from S3 (cached 60 minutes per <code>clientKey</code>), then validates the caller's <code>x-api-key</code> unless that tenant has opted out.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Fetch Pending Payment Requests</h4>
+              <p>For the requested register number, <code>AuthorityHelper.get_payment_requests</code> pages through Authority's payment-request collection (100 at a time via <code>$skip</code>) to collect every request with no receipt raised yet.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Walk the Chain, Concurrently</h4>
+              <p>Each payment request needs its own register, that register's extended details and linked parcel, and its applicant's name, four to five further Authority calls per row. <code>RegisterPaymentSourceCollector</code> runs that chain for every payment request at once, bounded by a semaphore, rather than one row at a time.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Transform Per Tenant</h4>
+              <p>Each collected row is run through that tenant's own <code>payment_jolt_spec.json</code> (a separate cached S3 object) via the stateless <code>JoltHelper</code>, producing one <code>RegisterPaymentDetails</code> per row; a row the spec can't map is logged and skipped rather than failing the whole response.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span></div>
+            <div class="process__content">
+              <h4>Respond &amp; Report</h4>
+              <p>The transformed list is returned as the response body, and an "integration completed" event, tagged with tenant/recipe codes, is POSTed to a central webhook on both success and failure so the run is visible without checking Lambda logs directly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">ALB</span>
+            <div class="arch-box__label">Shared ALB<br><small>routes by tenant hostname</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--python" aria-hidden="true">Py</span>
+            <div class="arch-box__label">AWS Lambda<br><small>FastAPI + Mangum, container image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">RegisterPaymentService<br><small>orchestrates resolve &rarr; collect &rarr; transform</small></div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Every Request</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Civica Authority<br><small>payment requests, registers, parcels, names</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>tenant config, secrets, JOLT specs (cached)</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook<br><small>fires on success and failure</small></div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          A downstream "Source" layer (<code>SourceHelper</code> / <code>SourceManager</code>)
+          is already wired into the request flow with the same
+          controller&nbsp;&rarr;&nbsp;service&nbsp;&rarr;&nbsp;helper&nbsp;&rarr;&nbsp;manager
+          layering as the Authority side, ready for whichever payment or receipting vendor a
+          tenant needs this pushed to next; today it's an intentionally empty stub, so the
+          JOLT-transformed result comes back directly as the API response instead.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Concurrent Data Collection</h2>
+        <p class="project-copy">
+          The chain behind one payment request, register &rarr; extended register &amp;
+          parcel, register &rarr; applicants &rarr; name, is inherently sequential on its
+          own, but different payment requests don't depend on each other at all. Running
+          that chain one row at a time against a register with around 100 pending payment
+          requests measured roughly 3 minutes 40 seconds end to end in testing, far too
+          slow for a synchronous API response.
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">app/services/register_payment_source_collector.py</span>
+          <pre>DEFAULT_CONCURRENCY = 10
+
+async def collect(self, int_data, payment_requests):
+    return list(await asyncio.gather(
+        *(self._build_one(int_data, pr) for pr in payment_requests)
+    ))
+
+async def _build_one(self, int_data, payment_request):
+    async with self._semaphore:
+        # register -&gt; extended register -&gt; parcel
+        # register -&gt; applicants -&gt; name
+        ...</pre>
+        </div>
+        <p class="project-copy">
+          Since this app is single-threaded asyncio rather than a thread pool, the
+          <code>Semaphore</code> caps how many rows are <em>in flight</em> at once, not how
+          many OS threads run; <code>httpx.AsyncClient</code>'s own connection pool already
+          handles the concurrent requests underneath. <code>asyncio.gather</code> preserves
+          input order regardless of which row's chain actually finishes first, so the
+          response list still lines up with the original payment-request order.
+          <code>DEFAULT_CONCURRENCY</code> is a single constant, the tuning knob for
+          trading wall-clock time against load placed on Authority's API.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Multi-Tenant Resolution</h2>
+        <p class="project-copy">
+          One deployed Lambda, one image, serves every tenant on this hostname pattern;
+          nothing tenant-specific is baked into the code or the container.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Step</th><th>Source</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>1. Parse host header</td><td><code>{tenantName}-{recipeCode}.domain</code></td><td>Tenant name + recipe code</td></tr>
+              <tr><td>2. Resolve tenant code</td><td><code>S3_TENANT_CODE_API/{tenantName}/code</code></td><td>Numeric tenant code</td></tr>
+              <tr><td>3. Build client key</td><td><code>{tenantCode}-{recipeCode}</code></td><td>Cache key for config, secrets &amp; tokens</td></tr>
+              <tr><td>4. Load &amp; cache config</td><td>S3 <code>TenantConfigurations/{clientKey}/config.json</code></td><td>Authority URLs + secret-key names (60-min TTL)</td></tr>
+              <tr><td>5. Resolve secrets</td><td><code>S3_SECRETS_API</code>, keyed by tenant code</td><td>Authority username/password/client id/secret, API key</td></tr>
+              <tr><td>6. Load JOLT spec</td><td>S3 <code>TenantConfigurations/{clientKey}/payment_jolt_spec.json</code></td><td>Per-tenant response shape (optional; missing spec just logs a warning)</td></tr>
+              <tr><td>7. Authenticate the caller</td><td><code>x-api-key</code> header vs. cached secret</td><td>401 before any Authority call, unless the tenant opted out</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          A local-development escape hatch (<code>LOCAL_TESTING=true</code>) swaps the real
+          <code>Host</code> header for a fixed <code>CLIENT_HOST</code> value, so the same
+          tenant-resolution code path can be exercised by hitting the app directly through
+          Swagger or <code>curl</code> without spoofing headers, and is never reachable in
+          a deployed environment.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: One Payment Request Row</h2>
+        <p class="project-copy">
+          The concurrency above means every payment request runs this chain in parallel;
+          this is what one row's chain looks like in isolation.
+        </p>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1010 460" role="img" aria-label="Sequence diagram of one payment request row being resolved and transformed" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqRpArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqRpArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="108" y="64" width="12" height="356" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Caller</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">FastAPI</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">JoltHelper</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET /payments/register/{n} (Host, x-api-key)</text>
+
+            <line x1="242" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="306" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(config.json + payment_jolt_spec.json)</text>
+
+            <line x1="242" y1="150" x2="498" y2="150" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="370" y="143" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST token (password grant, HTTP Basic)</text>
+            <line x1="498" y1="190" x2="242" y2="190" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqRpArrowMuted)"></line>
+            <text x="370" y="183" text-anchor="middle" font-size="11" fill="var(--text-muted)">bearer token (cached per tenant)</text>
+
+            <line x1="242" y1="230" x2="498" y2="230" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="370" y="223" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET payment requests (paged, $skip)</text>
+
+            <line x1="242" y1="270" x2="498" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="370" y="263" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET register, extended register, applicants, name</text>
+            <line x1="498" y1="310" x2="242" y2="310" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqRpArrowMuted)"></line>
+            <text x="370" y="303" text-anchor="middle" font-size="11" fill="var(--text-muted)">joined source row</text>
+
+            <line x1="242" y1="350" x2="626" y2="350" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="434" y="343" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">transform(source_row, tenant_spec)</text>
+
+            <line x1="242" y1="390" x2="754" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqRpArrow)"></line>
+            <text x="498" y="383" text-anchor="middle" font-size="11" fill="var(--text-muted)">POST IntegrationCompletedEvent</text>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band marks the FastAPI request's active lifetime; the Authority
+          token call only happens on a cache miss, most requests skip straight to the
+          data calls using an already-cached token.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Observability &amp; Error Handling</h2>
+        <p class="project-copy">
+          Every request gets one correlation id threaded through the whole call, and every
+          failure mode maps to a specific, structured JSON shape rather than a bare
+          traceback.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Failure</th><th>Status</th><th>Handled by</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Malformed/missing <code>Host</code> header</td><td>400</td><td><code>BadRequestError</code> &rarr; global <code>AppError</code> handler</td></tr>
+              <tr><td>Missing/invalid <code>x-api-key</code></td><td>401</td><td><code>UnauthorizedError</code> &rarr; global <code>AppError</code> handler</td></tr>
+              <tr><td>Authority (or any upstream) non-2xx / timeout</td><td>502</td><td><code>HttpCallError</code> &rarr; dedicated handler, upstream body kept out of the client response</td></tr>
+              <tr><td>Anything unexpected</td><td>500</td><td>Generic <code>Exception</code> handler, full traceback logged server-side only</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          On Lambda, an ASGI middleware pulls the AWS request id straight off Mangum's
+          Lambda context and uses it as the request's <code>track_id</code>, so a log line
+          in CloudWatch and the <code>trackId</code> field in an error response always point
+          at the same request; a plain ASGI wrapper is used deliberately instead of
+          Starlette's <code>BaseHTTPMiddleware</code>, whose task-group-based
+          <code>call_next()</code> would otherwise double-log an already-handled exception.
+          The same middleware echoes <code>track_id</code> back as an
+          <code>x-track-id</code> response header. Deeper down, <code>HttpHelper</code>
+          masks <code>access_token</code>/<code>authentication_token</code> fields with
+          regex before logging any response body, so a debug-level log line never leaks a
+          live Authority token.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines</div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">pytest --cov + SonarCloud<br><small>90% coverage gate</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>public.ecr.aws/lambda/python:3.13</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda + ALB target group + listener rule</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>pytest.ini</code> runs with coverage on every invocation
+          (<code>--cov=app</code>) and fails the build outright if total coverage drops
+          below 90%, both locally and in CI, ahead of the SonarCloud quality gate.
+          The Lambda ships as a container image built from
+          <code>public.ecr.aws/lambda/python:3.13</code>, wired to an existing shared ALB
+          via a target-group/listener-rule pair rather than API Gateway, consistent with
+          this developer's other Civica Authority integrations. <code>lifespan="off"</code>
+          is set on Mangum deliberately: the shared <code>httpx.AsyncClient</code> is a
+          module-level singleton created once at cold start so warm invocations reuse its
+          connection pool, and running a full ASGI lifespan on every invocation would tear
+          that client down and immediately break the next warm call.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>app/
+&#9500;&#9472; main.py                  # FastAPI app, exception handlers, custom Swagger/ReDoc
+&#9500;&#9472; lambda_handler.py        # Mangum(app, lifespan="off")
+&#9500;&#9472; controllers/register_payment_controller.py   # thin HTTP adapter
+&#9500;&#9472; services/
+&#9474;   &#9500;&#9472; register_payment_service.py            # orchestrates resolve -&gt; collect -&gt; transform
+&#9474;   &#9492;&#9472; register_payment_source_collector.py   # concurrent per-row Authority chain
+&#9500;&#9472; helpers/       app_helper.py (tenant/api-key), authority_helper.py, source_helper.py (stub)
+&#9500;&#9472; managers/      authority_manager.py, source_manager.py (stub), config_manager.py, s3_manager.py, event_manager.py
+&#9500;&#9472; clients/       aws_s3_client.py
+&#9500;&#9472; middlewares/   int_data_middleware.py   # per-request track_id + Lambda context
+&#9500;&#9472; security/      api_key_validator.py
+&#9500;&#9472; models/        Pydantic DTOs (Authority responses, RegisterPaymentDetails)
+&#9500;&#9472; data/          client_config.py, int_data.py, register_payment_source.py
+&#9492;&#9472; config/        env_config.py
+
+tests/            pytest suite, unit per helper/manager + one end-to-end flow test
+cloudformations/  Lambda + ALB target group/listener rule (uat)
+scripts/          build/push/deploy helpers (uat)</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>AWS_SG_BUCKET_NAME</code></td><td>S3 bucket holding <code>TenantConfigurations/{clientKey}/&hellip;</code></td></tr>
+              <tr><td><code>S3_SECRETS_API</code></td><td>Secrets endpoint; substitutes tenant code into a <code>%s</code> placeholder if present</td></tr>
+              <tr><td><code>S3_TENANT_CODE_API</code></td><td>Base URL for resolving a tenant name to its numeric tenant code</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Completed-event webhook endpoint and API key</td></tr>
+              <tr><td><code>CLIENT_HOST</code> / <code>LOCAL_TESTING</code></td><td>Local-only Host header override; ignored/unset in deployed environments</td></tr>
+              <tr><td><code>AWS_REGION_INTEGRATION</code> / <code>LOG_LEVEL</code></td><td>AWS region (default <code>ap-southeast-2</code>) and log verbosity (default <code>INFO</code>)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          No static AWS access/secret keys are read by the app itself; S3 access goes
+          through boto3's default credential chain, resolved via the Lambda execution
+          role's IAM permissions in every deployed environment.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>The Authority-side data collection, tenant resolution, config/secrets caching, token handling, and error handling are fully built and tested; the outbound "Source" leg (the actual payment/receipting vendor a council needs this pushed to) is an intentionally empty stub, so today the JOLT-transformed result comes back as the API response itself rather than being forwarded on.</li>
+          <li>This is the first project on this portfolio built on Python/FastAPI/asyncio rather than Java/Spring Boot; the tenant-resolution, config-caching, and OAuth2 token-caching patterns are deliberately ported from this developer's Java Civica Authority integrations rather than reinvented.</li>
+          <li>Concurrency is capped by an <code>asyncio.Semaphore</code>, not a thread pool; this app is single-threaded asyncio throughout, and <code>httpx.AsyncClient</code>'s own connection pool handles the concurrent HTTP calls.</li>
+          <li>A missing or broken per-tenant JOLT spec doesn't fail config loading, it just leaves <code>payment_jolt_spec</code> unset, which the transform step then reports as a 404-style <code>NotFoundError</code> rather than a 500.</li>
+          <li>The CI pipeline fails the build if test coverage drops below 90%, enforced by <code>pytest.ini</code>'s <code>--cov-fail-under=90</code> before SonarCloud's own quality gate even runs.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
