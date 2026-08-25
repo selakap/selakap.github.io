@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civica Authority &harr; OneBlink Job &amp; Prefill Integration | Selaka Piumal</title>
+  <meta name="description" content="Case study: a scheduled AWS Lambda that turns new Civica Authority workflow tasks into pre-filled OneBlink field-inspection jobs, enriching each task from eight related Authority records and authenticating to OneBlink via a hand-built signed JWT.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a href="../index.html" class="navbar__brand">SP<span>.</span></a>
+      <nav class="navbar__nav">
+        <a href="../index.html#projects">&larr; Back to Portfolio</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="project-hero">
+      <div class="container">
+        <p class="hero__eyebrow">Case Study</p>
+        <h1 class="project-hero__title">Civica Authority &harr; OneBlink Job &amp; Prefill Integration</h1>
+        <p class="project-hero__subtitle">
+          A scheduled AWS Lambda that turns a new <strong>Civica Authority</strong> workflow
+          task into a ready-to-complete <strong>OneBlink</strong> field job: it enriches the
+          task from eight related Authority records, JOLT-transforms the result twice, and
+          dispatches a pre-filled inspection form so an officer in the field opens a job
+          that already knows the applicant, the property, and the work being assessed.
+        </p>
+        <ul class="tag-list">
+          <li>Java 17</li><li>Spring Boot</li><li>AWS Lambda</li><li>Civica Authority</li>
+          <li>OneBlink API</li><li>JOLT</li><li>Amazon DynamoDB</li><li>Amazon S3</li>
+          <li>Amazon EventBridge</li><li>Bitbucket Pipelines</li><li>SonarCloud</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> About OneBlink</h2>
+        <p class="project-copy">
+          <strong>OneBlink</strong> is an Australian govtech platform local councils use to
+          build digital forms and dispatch them to field staff as mobile <strong>Jobs</strong>,
+          complete with offline capture and PDF generation, so an inspecting or assessing
+          officer can fill in a form from a phone or tablet on-site rather than on paper.
+          Councils commonly pair it with their core regulatory system, in this case
+          <strong>Civica Authority</strong>, so a dispatched job doesn't start as a blank
+          form: the applicant, the property, and the nature of the work are already
+          on the page before the officer even opens it.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Problem</h2>
+        <p class="project-copy">
+          When an Authority workflow task reaches an inspection or assessment stage,
+          someone has to hand that work to a OneBlink job for the officer who'll actually
+          go out and look at it. Built by hand, that means an officer (or an administrator
+          on their behalf) re-typing the applicant's name, the property address, the parcel
+          details, the type of work proposed, and any existing task notes into a OneBlink
+          form, all of which Authority already knows, before the actual inspection can even
+          start. Every manual re-entry is also a chance to introduce a typo that then shows
+          up on the officer's PDF report.
+        </p>
+        <p class="project-copy">
+          This integration removes that step entirely: five minutes after a qualifying
+          task appears in Authority, the matching OneBlink job already exists, pre-filled,
+          waiting for an officer to open it.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> How It Works</h2>
+        <div class="process">
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">1</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Discover Qualifying Tasks</h4>
+              <p><code>JobService</code> pages through Authority workflow tasks modified since the last run (an S3 bookmark, Melbourne local time), filtered server-side by every configured (document type, workflow action code) pair, then keeps only tasks that are genuinely newly-actionable, no determination code yet, inside the trigger window, and matching a configured task type, rather than every task the filter happens to return.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">2</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Check for an Existing Job</h4>
+              <p><code>JobAsyncProcessor</code> looks up any OneBlink job already tagged with this task's external id (<code>formattedAccount/taskId</code>). If one exists, it's deleted rather than left alone, so a retried or re-triggered task always ends up with exactly one current job, never a stale duplicate sitting next to a fresh one.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">3</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Enrich from Authority</h4>
+              <p>A chain of Authority calls builds up one <code>SourcePayload</code>: the actioning officer's name, the application record, its linked property, the parcel address and property/parcel record, the proposal type (resolved through a separate building/development type lookup), the task's own comment thread, and a computed description of works.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">4</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Transform Twice</h4>
+              <p>The enriched payload runs through two separate, independently cached JOLT specs, one producing the OneBlink <strong>prefill</strong> data, the other producing the OneBlink <strong>job</strong> request itself, so the two OneBlink API shapes can evolve independently of each other and of Authority's own data model.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">5</span><span class="line"></span></div>
+            <div class="process__content">
+              <h4>Prefill, Then Create the Job</h4>
+              <p>The prefill payload is PUT to OneBlink against the form mapped to this task type; OneBlink hands back a <code>preFillFormDataId</code> tucked inside a response header, which is then attached to the job payload before it's POSTed to create the actual job.</p>
+            </div>
+          </div>
+          <div class="process__step">
+            <div class="process__marker"><span class="circle">6</span></div>
+            <div class="process__content">
+              <h4>Record &amp; Report</h4>
+              <p>The new job's id is written to DynamoDB against the task's source id, and an <code>IntegrationCompletedEvent</code> fires to the platform's completed-event endpoint whether the run succeeded or failed. A separate retry pass re-drives any DynamoDB entry still <code>failed</code>/<code>received</code> after a 3-minute cool-down.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Architecture</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--integration" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg>
+            </span>
+            <div class="arch-box__label">EventBridge Rule<br><small>every 5 minutes</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--compute" aria-hidden="true">&lambda;</span>
+            <div class="arch-box__label">AWS Lambda<br><small>Spring Boot, container image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">JobService &rarr; JobAsyncProcessor<br><small>discovery, per-task fan-out</small></div>
+        </div>
+
+        <div class="arch-diagram" style="margin-top:20px;">
+          <div class="arch-box">Every Task</div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-branches">
+            <div class="arch-box arch-box--small">Civica Authority<br><small>workflow tasks + 8-call enrichment chain</small></div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--reporting" aria-hidden="true">OB</span>
+              <div class="arch-box__label">OneBlink API<br><small>prefill data, job create/get/delete</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--database" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <div class="arch-box__label">DynamoDB<br><small>idempotency + retry state</small></div>
+            </div>
+            <div class="arch-box arch-box--small arch-box--icon">
+              <span class="arch-icon arch-icon--storage" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 16h-9L6 4z"/><path d="M4 4h16"/></svg>
+              </span>
+              <div class="arch-box__label">Amazon S3<br><small>config, two JOLT specs, last-run marker</small></div>
+            </div>
+            <div class="arch-box arch-box--small">Completed-Event Webhook</div>
+          </div>
+        </div>
+
+        <p class="project-copy">
+          Discovery runs once per invocation; every task that passes the filter is then
+          handed to its own async task on a dedicated Spring thread pool
+          (<code>@Async("ThreadExecutor")</code>), so a busy 5-minute window processes tasks
+          concurrently rather than one at a time, mirroring the same async fan-out pattern
+          used across this developer's other Civica Authority integrations.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Authenticating to OneBlink</h2>
+        <p class="project-copy">
+          OneBlink's developer-key authentication issues a signed JWT built from an access
+          key and a secret key, and its official SDKs are JavaScript/.NET only. With no
+          Java SDK available, <code>OneBlinkHelper</code> builds the token by hand: an
+          HS256 header and a payload carrying <code>iss</code>, <code>iat</code>, and
+          <code>exp</code> (plus optional <code>sub</code>/<code>oneblink:access</code>
+          claims the app doesn't currently use), signed with <code>HmacSHA256</code> and
+          base64url-encoded, deliberately mirroring the claim shape OneBlink's own .NET SDK
+          produces so the token is accepted the same way.
+        </p>
+        <div class="code-block">
+          <span class="code-block__label">JWT construction (app/helpers/OneBlinkHelper.java)</span>
+          <pre>header  = base64url({"alg":"HS256","typ":"JWT"})
+payload = base64url({"iss": accessKey, "iat": now, "exp": now + 3600})
+signature = base64url( HmacSHA256(header + "." + payload, secretKey) )
+token = header + "." + payload + "." + signature</pre>
+        </div>
+        <p class="project-copy">
+          The token is short-lived (one hour) and regenerated at the start of every Lambda
+          invocation rather than cached across warm containers, keeping the token logic
+          stateless and simple at the cost of one extra signing operation per run.
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> The Authority Enrichment Chain</h2>
+        <p class="project-copy">
+          One qualifying task drives a fixed sequence of further Authority lookups before
+          it's ready to transform, each one optional and skipped cleanly if its source
+          field is missing:
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Step</th><th>Authority Call</th><th>Adds</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>1</td><td>Name by id</td><td>Actioning officer's name</td></tr>
+              <tr><td>2</td><td>Document by formatted account</td><td>The application/document record</td></tr>
+              <tr><td>3</td><td>Document &rarr; property link</td><td>Linked property/parcel id</td></tr>
+              <tr><td>4</td><td>Parcel address by id</td><td>Street address for the property</td></tr>
+              <tr><td>5</td><td>Property parcel by id</td><td>Full parcel/lot record</td></tr>
+              <tr><td>6</td><td>Application proposals &rarr; proposal type</td><td>Building or development work type</td></tr>
+              <tr><td>7</td><td>Task comment by task id</td><td>Most recent comment on the task</td></tr>
+              <tr><td>8</td><td>Document description</td><td>Description of works, appended with the proposal type description for certain document types</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          Everything lands on one <code>SourcePayload</code> object, which is what both
+          JOLT specs actually transform, so adding a new field to a prefill or job mapping
+          is a config change to a spec file, not a Java change, as long as the underlying
+          data is already on the payload.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Sequence: One Task Becomes a Job</h2>
+        <div class="sequence-diagram-wrap">
+          <svg viewBox="0 0 1136 500" role="img" aria-label="Sequence diagram of an Authority task becoming a pre-filled OneBlink job" class="sequence-diagram__svg">
+            <defs>
+              <marker id="seqObArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-2)"></path>
+              </marker>
+              <marker id="seqObArrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)"></path>
+              </marker>
+            </defs>
+            <rect x="620" y="64" width="12" height="356" fill="var(--accent-1)" opacity="0.18" rx="3"></rect>
+            <line x1="114" y1="58" x2="114" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="242" y1="58" x2="242" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="370" y1="58" x2="370" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="498" y1="58" x2="498" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="626" y1="58" x2="626" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="754" y1="58" x2="754" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <line x1="882" y1="58" x2="882" y2="430" stroke="var(--card-border)" stroke-width="1.5"></line>
+            <rect x="58" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="114" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">EventBridge</text>
+            <rect x="186" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="242" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Lambda</text>
+            <rect x="314" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="370" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Authority</text>
+            <rect x="442" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="498" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Amazon S3</text>
+            <rect x="570" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="626" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">OneBlink</text>
+            <rect x="698" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="754" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">DynamoDB</text>
+            <rect x="826" y="6" width="112" height="44" rx="8" fill="var(--card-bg)" stroke="var(--card-border)"></rect>
+            <text x="882" y="33" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">Webhook</text>
+
+            <line x1="114" y1="70" x2="242" y2="70" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="178" y="63" text-anchor="middle" font-size="11" fill="var(--text-muted)">Invoke (every 5 min)</text>
+
+            <line x1="242" y1="110" x2="370" y2="110" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="306" y="103" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET workflow tasks since last run</text>
+
+            <line x1="242" y1="150" x2="626" y2="150" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="434" y="143" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GET jobs?externalId={task}: exists?</text>
+
+            <line x1="242" y1="190" x2="370" y2="190" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="306" y="183" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">8-call enrichment chain</text>
+            <line x1="370" y1="230" x2="242" y2="230" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqObArrowMuted)"></line>
+            <text x="306" y="223" text-anchor="middle" font-size="11" fill="var(--text-muted)">enriched SourcePayload</text>
+
+            <line x1="242" y1="270" x2="498" y2="270" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="370" y="263" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">GetObject(job + prefill JOLT specs)</text>
+
+            <line x1="242" y1="310" x2="626" y2="310" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="434" y="303" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">PUT prefill data (form id)</text>
+            <line x1="626" y1="350" x2="242" y2="350" stroke="var(--text-muted)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seqObArrowMuted)"></line>
+            <text x="434" y="343" text-anchor="middle" font-size="11" fill="var(--text-muted)">preFillFormDataId (response header)</text>
+
+            <line x1="242" y1="390" x2="754" y2="390" stroke="var(--accent-2)" stroke-width="1.6" marker-end="url(#seqObArrow)"></line>
+            <text x="498" y="383" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">POST create job (with prefill id)</text>
+
+            <line x1="626" y1="70" x2="754" y2="70" stroke="var(--text-muted)" stroke-width="0" opacity="0"></line>
+            <line x1="242" y1="70" x2="242" y2="70" stroke="var(--text-muted)" stroke-width="0" opacity="0"></line>
+          </svg>
+        </div>
+        <p class="project-copy" style="margin-top:-12px;">
+          The highlighted band marks OneBlink's lifeline; every write in this flow, prefill
+          data and the job itself, ultimately lands there. A DynamoDB write and the
+          completed-event POST close out the run after the job is created (omitted above
+          for space; the same shape as the other diagrams on this site).
+        </p>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Deployment &amp; CI/CD</h2>
+        <div class="arch-diagram">
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--devtools" aria-hidden="true">BB</span>
+            <div class="arch-box__label">Bitbucket Pipelines<br><small>manually triggered (UAT)</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--quality" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">SonarCloud Gate<br><small>compile + quality scan</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--containers" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 3v8M8 7l4 4 4-4"/></svg>
+            </span>
+            <div class="arch-box__label">Amazon ECR<br><small>Docker image</small></div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box--icon">
+            <span class="arch-icon arch-icon--management" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            </span>
+            <div class="arch-box__label">CloudFormation<br><small>Lambda + EventBridge rule</small></div>
+          </div>
+        </div>
+        <p class="project-copy">
+          <code>mvn clean package</code> produces a shaded <code>lambda-spring.jar</code>;
+          the container image runs that jar as an AWS Lambda (256&nbsp;MB, 300s timeout)
+          on a <code>cron(0/5 * * * ? *)</code> EventBridge schedule. All three pipelines,
+          the SonarCloud scan, ECR provisioning, and the Lambda deploy, are custom
+          (manually triggered) Bitbucket Pipelines steps rather than running automatically
+          on every push, and only a UAT deployment pipeline exists so far.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Project Layout</h2>
+        <div class="code-block">
+          <span class="code-block__label">repo layout</span>
+          <pre>src/main/java/.../job/
+&#9500;&#9472; LambdaHandler.java / LambdaSpringConfig.java   # Lambda entry point + Spring config
+&#9500;&#9472; local/LocalSpringApp.java                       # local console-app entry point
+&#9500;&#9472; services/
+&#9474;   &#9500;&#9472; JobService.java             # discovery: new tasks -&gt; per-task fan-out
+&#9474;   &#9500;&#9472; JobRetryService.java        # re-drives failed/received DynamoDB entries
+&#9474;   &#9492;&#9472; SGCompletedEventService.java
+&#9500;&#9472; async/JobAsyncProcessor.java    # per-task: dedup, enrich, transform, create job
+&#9500;&#9472; helpers/       AuthorityHelper, OneBlinkHelper (incl. JWT signing), JoltHelper, S3/Dynamo helpers
+&#9500;&#9472; managers/      AuthorityManager, OneBlinkManager, AwsSetupConfigManager, DynamoManager
+&#9500;&#9472; models/        Authority document/property/parcel/proposal DTOs, OneBlink job/prefill DTOs
+&#9500;&#9472; data/          IntegrationData, SourcePayload, ClientConfigData, TaskListConfigData
+&#9492;&#9472; constants/      AppConstants: Dynamo keys, S3 paths, OneBlink header/claim names
+
+cloudformations/  Lambda + EventBridge rule (uat, prod)
+scripts/          build/push/deploy helpers (uat, prod)</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--alt">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Configuration</h2>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr><th>Variable</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>AWS_SG_BUCKET_NAME</code></td><td>S3 bucket holding per-client config, both JOLT specs, and the last-run-time marker</td></tr>
+              <tr><td><code>S3_SECRETS_API</code></td><td>URL template for fetching per-tenant secrets, including Authority and OneBlink credentials</td></tr>
+              <tr><td><code>COMPLETED_EVENT_URL</code> / <code>COMPLETED_EVENT_API_KEY_VALUE</code></td><td>Completed-event webhook endpoint and API key</td></tr>
+              <tr><td><code>AWS_ACCESS_KEY_INTEGRATION</code> / <code>AWS_SECRET_KEY_INTEGRATION</code></td><td>Optional static AWS credentials; falls back to the default credentials chain</td></tr>
+              <tr><td><code>AWS_REGION_INTEGRATION</code></td><td>AWS region for the S3/DynamoDB clients</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="project-copy">
+          Authority and OneBlink credentials themselves (username/password/client
+          id/secret, and the OneBlink access/secret key pair) are resolved per client
+          through the secrets API, keyed by logical names like
+          <code>AUTHORITY_USERNAME_JOB</code> and <code>ONEBLINK_API_SECRET_JOB</code>,
+          the same secrets-indirection pattern used across this developer's other Civica
+          Authority integrations.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section__heading"><span>&#9670;</span> Good to Know</h2>
+        <ul class="timeline__bullets project-copy">
+          <li>An existing OneBlink job for the same task is always deleted and recreated rather than left alone, so a retried task, or the same 5-minute window catching a task twice, never results in duplicate jobs sitting in an officer's queue.</li>
+          <li>The prefill id doesn't come back in OneBlink's response body: it's tucked inside an <code>x-oneblink-response</code> header as a small JSON blob, which <code>OneBlinkHelper</code> parses out separately from the main response handling.</li>
+          <li>No official Java SDK exists for OneBlink's developer-key auth, so the signed JWT is generated by hand, deliberately matching the claim shape OneBlink's own .NET SDK produces rather than inventing a new one.</li>
+          <li>A task only qualifies once its modified timestamp has genuinely diverged from its created timestamp and it carries no determination code yet, a business rule change requested after the integration first went live, not the original design.</li>
+          <li>The retry pass re-fetches the task from Authority before reprocessing it and compares modified timestamps, so a task that's moved on since it failed is caught rather than silently reprocessed against stale data.</li>
+          <li>Only a UAT deployment pipeline exists today; a Prod pipeline is called out in the project's own documentation as not yet set up.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section section--contact">
+      <div class="container contact__inner">
+        <a href="../index.html#projects" class="btn btn--primary btn--back">&larr; Back to Portfolio</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Designed &amp; built by Selaka Piumal &middot; <span id="year"></span></p>
+    </div>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
